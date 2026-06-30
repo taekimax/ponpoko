@@ -1,0 +1,26 @@
+{
+  "name": "arcade-safari",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepare:roms": "node scripts/prepare-roms.mjs",
+    "notify:ayukawa": "node scripts/notify-ayukawa.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "browser:smoke": "node scripts/browser-smoke.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "vite": "^7.2.7"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

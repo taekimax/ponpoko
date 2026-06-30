@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const message = process.argv.slice(2).join(" ") || "폰포코 배포 완료: https://taekimax.github.io/ponpoko/";
 const candidates = [
+  { command: "hermes", args: ["send", "--to", "telegram", message] },
   { command: "hermes", args: ["agent", "ayukawa", "dm", message] },
   { command: "hermes", args: ["ayukawa", "dm", message] },
   { command: "ayukawa", args: ["dm", message] }

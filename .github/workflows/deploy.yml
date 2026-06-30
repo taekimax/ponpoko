@@ -28,6 +28,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run smoke
+      - run: npx playwright install --with-deps webkit
+      - run: npm run browser:smoke
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

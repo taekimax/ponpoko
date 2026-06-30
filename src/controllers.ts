@@ -13,6 +13,8 @@ export type ControlAction =
   | "fastDrop"
   | "fire"
   | "wire"
+  | "ok"
+  | "back"
   | "start"
   | "coin";
 

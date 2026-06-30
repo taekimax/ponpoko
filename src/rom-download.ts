@@ -1,11 +1,12 @@
 export interface RomDownloadResult {
   blob: Blob;
-  objectUrl: string;
+  objectUrl: string | null;
 }
 
 export interface RomDownloadOptions {
   fetcher?: typeof fetch;
   onProgress?: (percent: number) => void;
+  createObjectUrl?: boolean;
 }
 
 export async function downloadRom(url: string, options: RomDownloadOptions = {}): Promise<RomDownloadResult> {
@@ -28,7 +29,7 @@ export async function downloadRom(url: string, options: RomDownloadOptions = {})
   if (!response.body || contentLength <= 0) {
     const blob = await response.blob();
     reportProgress(100);
-    return { blob, objectUrl: URL.createObjectURL(blob) };
+    return { blob, objectUrl: createObjectUrl(blob, options) };
   }
 
   const reader = response.body.getReader();
@@ -53,6 +54,13 @@ export async function downloadRom(url: string, options: RomDownloadOptions = {})
 
   return {
     blob,
-    objectUrl: URL.createObjectURL(blob)
+    objectUrl: createObjectUrl(blob, options)
   };
+}
+
+function createObjectUrl(blob: Blob, options: RomDownloadOptions): string | null {
+  if (options.createObjectUrl === false) {
+    return null;
+  }
+  return URL.createObjectURL(blob);
 }

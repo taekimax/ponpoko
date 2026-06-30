@@ -16,6 +16,7 @@ const input = new InputManager();
 let state: ViewState = { name: "menu", intro: true };
 let activeObjectUrl: string | null = null;
 let wakeLock: WakeLockSentinel | null = null;
+let startupAssistTimer: number | null = null;
 
 render();
 
@@ -142,6 +143,7 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
           <span data-game-status>${status}</span>
         </div>
         <button class="coin-button" type="button" data-action="coin">동전</button>
+        <button class="ok-button" type="button" data-action="ok">OK</button>
         <button class="start-button" type="button" data-action="start">시작</button>
       </header>
       <section class="game-stage">
@@ -200,19 +202,23 @@ function renderError(game: GameEntry, message: string): void {
 async function startGame(game: GameEntry): Promise<void> {
   releaseObjectUrl();
   input.releaseAll();
+  stopStartupAssist();
   await requestWakeLock();
   setState({ name: "loading", game, progress: 0, message: "화면을 끄지 말고 기다려 주세요." });
 
   try {
-    const rom = await downloadRom(getRomPath(game), {
+    const romPath = getRomPath(game);
+    const rom = await downloadRom(romPath, {
+      createObjectUrl: false,
       onProgress: (progress) => {
         setState({ name: "loading", game, progress, message: "화면을 유지하면 다운로드가 안정적으로 완료됩니다." });
       }
     });
     activeObjectUrl = rom.objectUrl;
+    const emulatorRomUrl = new URL(romPath, window.location.origin).href;
     setState({ name: "game", game, controlsEnabled: false, status: "다운로드 완료. 에뮬레이터를 시작합니다." });
     await waitForGameContainer();
-    await loadEmulator(game, rom.objectUrl, enableRuntimeControls);
+    await loadEmulator(game, emulatorRomUrl, enableRuntimeControls);
   } catch (error) {
     releaseWakeLock();
     setState({
@@ -270,6 +276,32 @@ function enableRuntimeControls(): void {
   if (status) {
     status.textContent = "플레이 중";
   }
+  startStartupAssist();
+}
+
+function startStartupAssist(): void {
+  stopStartupAssist();
+  let attempts = 0;
+  const assist = () => {
+    attempts += 1;
+    void sendConsoleOkSequence();
+    if (attempts >= 10) {
+      stopStartupAssist();
+    }
+  };
+  assist();
+  startupAssistTimer = window.setInterval(assist, 1200);
+}
+
+function stopStartupAssist(): void {
+  if (startupAssistTimer !== null) {
+    window.clearInterval(startupAssistTimer);
+    startupAssistTimer = null;
+  }
+}
+
+async function sendConsoleOkSequence(): Promise<void> {
+  await input.tapSequence(["ok", "left", "right", "ok", "coin", "start"], 70, 70);
 }
 
 async function requestWakeLock(): Promise<void> {
@@ -304,6 +336,7 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("pagehide", () => {
   input.releaseAll();
+  stopStartupAssist();
   releaseWakeLock();
   releaseObjectUrl();
 });

@@ -1,10 +1,8 @@
-import { access } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { chromium } from "playwright";
+import { webkit } from "playwright";
 
 const port = 4173;
 const baseUrl = `http://127.0.0.1:${port}/ponpoko/`;
-const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const server = spawn("npm", ["run", "preview", "--", "--port", String(port)], {
   stdio: ["ignore", "pipe", "pipe"]
@@ -12,10 +10,7 @@ const server = spawn("npm", ["run", "preview", "--", "--port", String(port)], {
 
 try {
   await waitForServer(baseUrl);
-  const launchOptions = await canAccess(chromePath)
-    ? { headless: true, executablePath: chromePath }
-    : { headless: true };
-  const browser = await chromium.launch(launchOptions);
+  const browser = await webkit.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
@@ -30,9 +25,57 @@ try {
   await page.getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
   await page.locator("#game").waitFor({ timeout: 10_000 });
   await page.locator("canvas").first().waitFor({ timeout: 60_000 });
+  await page.waitForTimeout(18_000);
+
+  const runtimeState = await page.evaluate(() => ({
+    bodyText: document.body.innerText,
+    core: window.EJS_core,
+    failed: window.EJS_emulator?.failedToStart,
+    frame: window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0,
+    gameUrl: window.EJS_gameUrl,
+    paused: window.EJS_emulator?.paused,
+    started: window.EJS_emulator?.started,
+    videoHeight: window.EJS_emulator?.gameManager?.getVideoDimensions?.("height"),
+    videoWidth: window.EJS_emulator?.gameManager?.getVideoDimensions?.("width")
+  }));
+
+  if (runtimeState.core !== "mame2003_plus") {
+    throw new Error(`Expected mame2003_plus core, got ${runtimeState.core}`);
+  }
+  if (!runtimeState.gameUrl?.startsWith(`http://127.0.0.1:${port}/ponpoko/roms/ponpoko.zip`)) {
+    throw new Error(`Expected absolute local Ponpoko ROM URL, got ${runtimeState.gameUrl}`);
+  }
+  if (runtimeState.failed || !runtimeState.started || runtimeState.paused) {
+    throw new Error(`Emulator did not reach active play state: ${JSON.stringify(runtimeState)}`);
+  }
+  if (runtimeState.frame < 60 || runtimeState.videoWidth !== 288 || runtimeState.videoHeight !== 224) {
+    throw new Error(`Ponpoko video did not advance as expected: ${JSON.stringify(runtimeState)}`);
+  }
+  if (/Failed to start game|Load Content|Main Menu/.test(runtimeState.bodyText)) {
+    throw new Error(`Unexpected emulator menu/error text: ${runtimeState.bodyText}`);
+  }
+
+  await page.evaluate(() => {
+    const gameManager = window.EJS_emulator?.gameManager;
+    if (!gameManager?.simulateInput) {
+      throw new Error("EmulatorJS simulateInput is not available");
+    }
+    window.__smokeInputCalls = [];
+    const original = gameManager.simulateInput.bind(gameManager);
+    gameManager.simulateInput = (player, input, pressed) => {
+      window.__smokeInputCalls.push({ input, player, pressed });
+      original(player, input, pressed);
+    };
+  });
+  await holdControl(page, "left", 500);
+  await holdControl(page, "jump", 350);
+
+  const inputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(inputCalls, 6, "left");
+  assertInputPair(inputCalls, 0, "jump");
 
   await browser.close();
-  console.log("browser smoke ok: mobile menu, runtime ROM download, EmulatorJS mount, and canvas startup verified");
+  console.log("browser smoke ok: WebKit Ponpoko ROM download, active mame2003_plus gameplay, and touch controls verified");
 } finally {
   server.kill("SIGTERM");
 }
@@ -53,11 +96,22 @@ async function waitForServer(url) {
   throw new Error(`Preview server did not start at ${url}`);
 }
 
-async function canAccess(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
+async function holdControl(page, action, durationMs) {
+  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
+  if (!box) {
+    throw new Error(`Control ${action} was not found`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(durationMs);
+  await page.mouse.up();
+}
+
+function assertInputPair(calls, input, label) {
+  const pressed = calls.some((call) => call.input === input && call.pressed === 1);
+  const released = calls.some((call) => call.input === input && call.pressed === 0);
+  if (!pressed || !released) {
+    throw new Error(`${label} control did not send input ${input}: ${JSON.stringify(calls)}`);
   }
 }

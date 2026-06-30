@@ -28,9 +28,9 @@ describe("static game catalog", () => {
     expect(ids).toContain("pang");
   });
 
-  it("maps every game to mame2003 and a static same-origin ROM URL", () => {
+  it("maps every game to the Safari-compatible MAME core and a static same-origin ROM URL", () => {
     for (const game of CATALOG) {
-      expect(game.core).toBe("mame2003");
+      expect(game.core).toBe("mame2003_plus");
       expect(game.rotation).toBe(0);
       expect(getRomPath(game)).toBe(`/ponpoko/roms/${game.romFile}`);
     }

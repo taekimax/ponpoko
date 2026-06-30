@@ -201,7 +201,7 @@ p {
 
 .game-topbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -228,6 +228,7 @@ p {
 
 .icon-button,
 .coin-button,
+.ok-button,
 .start-button {
   min-height: 40px;
   padding: 0 12px;
@@ -239,6 +240,11 @@ p {
 
 .coin-button {
   background: #2f9c95;
+}
+
+.ok-button {
+  background: #efc84a;
+  color: #111111;
 }
 
 .start-button {

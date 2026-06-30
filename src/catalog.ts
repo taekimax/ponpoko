@@ -11,7 +11,7 @@ export interface GameEntry {
   id: string;
   titleKo: string;
   titleEn: string;
-  core: "mame2003";
+  core: "mame2003_plus";
   rotation: 0;
   romFile: string;
   thumbnailFile: string;
@@ -27,7 +27,7 @@ export const CATALOG: GameEntry[] = [
     id: "ponpoko",
     titleKo: "너구리",
     titleEn: "Ponpoko",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "ponpoko.zip",
     thumbnailFile: "ponpoko.jpg",
@@ -38,7 +38,7 @@ export const CATALOG: GameEntry[] = [
     id: "bubbobr1",
     titleKo: "보글보글",
     titleEn: "Bubble Bobble",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "bubbobr1.zip",
     thumbnailFile: "bubbobr1.jpg",
@@ -49,7 +49,7 @@ export const CATALOG: GameEntry[] = [
     id: "neobombe",
     titleKo: "네오범버맨",
     titleEn: "Neo Bomberman",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "neobombe.zip",
     thumbnailFile: "neobombe.jpg",
@@ -60,7 +60,7 @@ export const CATALOG: GameEntry[] = [
     id: "atetris",
     titleKo: "테트리스",
     titleEn: "Tetris",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "atetris.zip",
     thumbnailFile: "atetris.jpg",
@@ -71,7 +71,7 @@ export const CATALOG: GameEntry[] = [
     id: "snowbros",
     titleKo: "스노우 브라더스",
     titleEn: "Snow Bros.",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "snowbros.zip",
     thumbnailFile: "snowbros.jpg",
@@ -82,7 +82,7 @@ export const CATALOG: GameEntry[] = [
     id: "dino",
     titleKo: "캐딜락&디노사우르스",
     titleEn: "Cadillacs and Dinosaurs",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "dino.zip",
     thumbnailFile: "dino.jpg",
@@ -93,7 +93,7 @@ export const CATALOG: GameEntry[] = [
     id: "pbobble",
     titleKo: "퍼즐 보블",
     titleEn: "Puzzle Bobble",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "pbobble.zip",
     thumbnailFile: "pbobble.jpg",
@@ -104,7 +104,7 @@ export const CATALOG: GameEntry[] = [
     id: "penbros",
     titleKo: "펭귄 브라더스",
     titleEn: "Penguin Brothers",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "penbros.zip",
     thumbnailFile: "penbros.jpg",
@@ -115,7 +115,7 @@ export const CATALOG: GameEntry[] = [
     id: "tnzs",
     titleKo: "뉴질랜드 스토리",
     titleEn: "The New Zealand Story",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "tnzs.zip",
     thumbnailFile: "tnzs.jpg",
@@ -126,7 +126,7 @@ export const CATALOG: GameEntry[] = [
     id: "pang",
     titleKo: "팡!",
     titleEn: "Pang!",
-    core: "mame2003",
+    core: "mame2003_plus",
     rotation: 0,
     romFile: "pang.zip",
     thumbnailFile: "pang.jpg",

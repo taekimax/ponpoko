@@ -3,7 +3,6 @@ import {
   getBootProgressSnapshot as createBootProgressSnapshot,
   shouldEnableRuntimeControls,
   shouldStopBoot,
-  type BootProgressRuntime,
   type BootProgressSnapshot
 } from "./boot-progress";
 import {
@@ -15,9 +14,9 @@ import {
 } from "./boot-debug";
 import { CATALOG, type GameEntry, getRomPath, getThumbnailPath } from "./catalog";
 import { type ControlAction, type ControllerProfile, getControllerProfile } from "./controllers";
-import { loadEmulator, suppressEmulatorChrome } from "./emulator";
-import { InputManager } from "./input";
-import { downloadRom } from "./rom-download";
+import { createNativeEmulator } from "./emulator";
+import { InputRouter } from "./input";
+import { downloadRomArrayBuffer } from "./rom-download";
 import { getStartupAssistSequence } from "./startup-assist";
 import "./styles.css";
 
@@ -34,12 +33,12 @@ declare global {
 }
 
 const app = getRequiredAppRoot();
-const input = new InputManager();
+const nativeEmulator = createNativeEmulator();
+const input = new InputRouter(nativeEmulator);
 const SWIPE_THRESHOLD_PX = 34;
 const TOUCH_POINTER_PREFIX = "touch:";
 const POINTER_PREFIX = "pointer:";
 let state: ViewState = { name: "menu", intro: true };
-let activeObjectUrl: string | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 let startupAssistTimer: number | null = null;
 let emulatorChromeObserver: MutationObserver | null = null;
@@ -51,6 +50,7 @@ let runtimeControlsFinalizing = false;
 let runtimePrepStatus: BootDebugRuntimePrep = "pending";
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
 
+input.attachKeyboard(window);
 render();
 
 function getRequiredAppRoot(): HTMLDivElement {
@@ -89,12 +89,13 @@ function renderMenu(showIntro: boolean): void {
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
+  input.releaseAll();
   app.innerHTML = `
     <main class="app-shell menu-shell">
       <section class="menu-header">
         <p class="eyebrow">iPhone Safari Arcade</p>
         <h1>폰포코 아케이드</h1>
-        <p>폰포코를 중심으로 엄선한 10개 고전게임을 실행합니다.</p>
+        <p>폰포코, 보글보글, 슈퍼 팡을 iPhone Safari 세로 화면에서 실행합니다.</p>
       </section>
       <section class="game-list" aria-label="게임 선택">
         ${CATALOG.map((game) => renderGameCard(game)).join("")}
@@ -161,6 +162,10 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
         <p class="eyebrow">${game.titleKo}</p>
         <h1>ROM 다운로드 중</h1>
         <p>${message}</p>
+        <ul class="loading-cautions">
+          <li>Safari를 닫지 말고 기다려 주세요.</li>
+          <li>처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다.</li>
+        </ul>
         <div class="progress-track">
           <span style="width: ${progress}%"></span>
         </div>
@@ -201,6 +206,8 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
   `;
 
   app.querySelector<HTMLButtonElement>("[data-back]")?.addEventListener("click", () => {
+    input.releaseAll();
+    nativeEmulator.dispose();
     window.location.href = "/ponpoko/";
   });
 
@@ -237,6 +244,10 @@ function getTouchZoneGlyph(zone: ControllerProfile["zones"][number]): string {
 
   if (zone.area === "right") {
     return "▶";
+  }
+
+  if (zone.action === "jump") {
+    return `<span class="jump-glyph"><span>▲</span><strong>${zone.label}</strong><span>▼</span></span>`;
   }
 
   return zone.label;
@@ -276,7 +287,7 @@ function renderEmulatorBootOverlay(): string {
           <li data-boot-step="runtime">게임 런타임 연결</li>
           <li data-boot-step="frame">첫 프레임 확인</li>
         </ol>
-        <p class="boot-note" data-boot-note>자동으로 게임이 시작됩니다. iPhone Safari에서는 MAME 코어 초기화 중 10~40초 동안 경과 표시가 멈출 수 있습니다. 앱이 멈춘 것이 아니며 자동으로 계속 진행됩니다.</p>
+        <p class="boot-note" data-boot-note>처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다.</p>
       </div>
     </div>
   `;
@@ -309,39 +320,45 @@ function renderError(game: GameEntry, message: string): void {
     void startGame(game);
   });
   app.querySelector<HTMLButtonElement>("[data-menu]")?.addEventListener("click", () => {
+    input.releaseAll();
+    nativeEmulator.dispose();
     setState({ name: "menu", intro: false });
   });
 }
 
 async function startGame(game: GameEntry): Promise<void> {
-  releaseObjectUrl();
   input.releaseAll();
+  nativeEmulator.dispose();
   stopStartupAssist();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   runtimeControlsEnabled = false;
   runtimeControlsFinalizing = false;
   runtimePrepStatus = "pending";
+  await unlockRuntimeAudio();
   await requestWakeLock();
-  setState({ name: "loading", game, progress: 0, message: "화면을 끄지 말고 기다려 주세요." });
+  setState({ name: "loading", game, progress: 0, message: "ROM 파일을 준비합니다." });
 
   try {
     const romPath = getRomPath(game);
-    const rom = await downloadRom(romPath, {
-      createObjectUrl: false,
+    const rom = await downloadRomArrayBuffer(romPath, {
       onProgress: (progress) => {
-        setState({ name: "loading", game, progress, message: "화면을 유지하면 다운로드가 안정적으로 완료됩니다." });
+        setState({ name: "loading", game, progress, message: "ROM 파일을 가져오는 중입니다." });
       }
     });
-    activeObjectUrl = rom.objectUrl;
-    const emulatorRomInput = new File([rom.blob], game.romFile, { type: "application/zip" });
     setState({ name: "game", game, controlsEnabled: false, status: "다운로드 완료. 에뮬레이터를 시작합니다." });
+    const gameMount = app.querySelector<HTMLElement>("#game");
+    if (gameMount) {
+      nativeEmulator.attach(gameMount);
+    }
     startBootProgressMonitor();
     startBootDebugPanel();
     startEmulatorChromeSuppression();
     await waitForBootOverlayPaint();
-    await loadEmulator(game, emulatorRomInput, requestRuntimeControls);
-    suppressEmulatorChrome();
+    await nativeEmulator.load(game, rom.arrayBuffer);
+    await nativeEmulator.start();
+    requestRuntimeAudioUnlock();
+    nativeEmulator.suppressRuntimeChrome();
   } catch (error) {
     releaseWakeLock();
     stopBootProgressMonitor();
@@ -356,6 +373,8 @@ async function startGame(game: GameEntry): Promise<void> {
 
 interface ActivePointer {
   currentAction: ControlAction;
+  deferred: boolean;
+  pressed: boolean;
   startX: number;
   startY: number;
 }
@@ -376,7 +395,15 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
         return;
       }
       event.preventDefault();
-      startControlPress(`${POINTER_PREFIX}${event.pointerId}`, action, event.clientX, event.clientY, activePointers);
+      startControlPress(
+        `${POINTER_PREFIX}${event.pointerId}`,
+        action,
+        event.clientX,
+        event.clientY,
+        supportsSwipe,
+        profile,
+        activePointers
+      );
       trySetPointerCapture(element, event.pointerId);
     });
 
@@ -413,7 +440,15 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
       (event) => {
         event.preventDefault();
         for (const touch of [...event.changedTouches]) {
-          startControlPress(`${TOUCH_POINTER_PREFIX}${touch.identifier}`, action, touch.clientX, touch.clientY, activePointers);
+          startControlPress(
+            `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
+            action,
+            touch.clientX,
+            touch.clientY,
+            supportsSwipe,
+            profile,
+            activePointers
+          );
         }
       },
       { passive: false }
@@ -454,19 +489,27 @@ function startControlPress(
   action: ControlAction,
   clientX: number,
   clientY: number,
+  supportsSwipe: boolean,
+  profile: ControllerProfile,
   activePointers: Map<string, ActivePointer>
 ): void {
   if (activePointers.has(pointerId)) {
     return;
   }
 
+  const deferred = shouldDeferSwipeOrigin(action, supportsSwipe, profile);
+  requestRuntimeAudioUnlock();
   activePointers.set(pointerId, {
     currentAction: action,
+    deferred,
+    pressed: !deferred,
     startX: clientX,
     startY: clientY
   });
   recordBootDebugTouch(action, "down");
-  input.press(action);
+  if (!deferred) {
+    input.pressControl(action);
+  }
 }
 
 function moveControlPress(
@@ -496,10 +539,14 @@ function moveControlPress(
     return;
   }
 
-  input.release(activePointer.currentAction);
+  if (activePointer.pressed) {
+    input.releaseControl(activePointer.currentAction);
+  }
   activePointer.currentAction = nextAction;
+  activePointer.deferred = false;
+  activePointer.pressed = true;
   recordBootDebugTouch(nextAction, "move");
-  input.press(nextAction);
+  input.pressControl(nextAction);
 }
 
 function endControlPress(pointerId: string, activePointers: Map<string, ActivePointer>): void {
@@ -509,8 +556,28 @@ function endControlPress(pointerId: string, activePointers: Map<string, ActivePo
   }
 
   recordBootDebugTouch(activePointer.currentAction, "up");
-  input.release(activePointer.currentAction);
+  if (activePointer.pressed) {
+    input.releaseControl(activePointer.currentAction);
+  } else {
+    input.tapControl(activePointer.currentAction);
+  }
   activePointers.delete(pointerId);
+}
+
+function shouldDeferSwipeOrigin(action: ControlAction, supportsSwipe: boolean, profile: ControllerProfile): boolean {
+  return supportsSwipe && Boolean(profile.swipe) && action === "jump";
+}
+
+function requestRuntimeAudioUnlock(): void {
+  void unlockRuntimeAudio();
+}
+
+async function unlockRuntimeAudio(): Promise<void> {
+  try {
+    await nativeEmulator.unlockAudio();
+  } catch {
+    // Audio unlock is best-effort; gameplay can continue and retry on the next user gesture.
+  }
 }
 
 function trySetPointerCapture(element: HTMLElement, pointerId: number): void {
@@ -588,14 +655,7 @@ async function waitForPonpokoInputReady(timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
-    const gameManager = window.EJS_emulator?.gameManager as
-      | {
-          getFrameNum?: () => number;
-          simulateInput?: (player: number, input: number, pressed: number) => void;
-        }
-      | undefined;
-
-    if (gameManager?.simulateInput && readDebugFrame(gameManager) >= 120) {
+    if (nativeEmulator.isInputReady(120)) {
       return true;
     }
 
@@ -606,35 +666,15 @@ async function waitForPonpokoInputReady(timeoutMs: number): Promise<boolean> {
 }
 
 async function acknowledgeMameCopyrightWarning(): Promise<void> {
-  await input.tapSequence(["left", "right"], 60, 80);
+  await input.tapControlSequence(["left", "right"], 60, 80);
   await waitForDelay(120);
   input.releaseAll();
 }
 
 async function reloadPonpokoStartState(): Promise<boolean> {
-  const gameManager = window.EJS_emulator?.gameManager as
-    | {
-        loadState?: (state: Uint8Array) => void;
-      }
-    | undefined;
-  const stateUrl = window.EJS_loadStateURL;
-
-  if (!gameManager?.loadState || !stateUrl) {
-    return false;
-  }
-
-  try {
-    const response = await fetch(stateUrl, { cache: "force-cache" });
-    if (!response.ok) {
-      return false;
-    }
-
-    gameManager.loadState(new Uint8Array(await response.arrayBuffer()));
-    await waitForDelay(150);
-    return true;
-  } catch {
-    return false;
-  }
+  const reloaded = await nativeEmulator.reloadConfiguredState();
+  await waitForDelay(150);
+  return reloaded;
 }
 
 function enableRuntimeControls(): void {
@@ -644,7 +684,7 @@ function enableRuntimeControls(): void {
 
   runtimeControlsEnabled = true;
   runtimePrepStatus = "controls-enabled";
-  suppressEmulatorChrome();
+  nativeEmulator.suppressRuntimeChrome();
   stopBootProgressMonitor();
   app.querySelector<HTMLElement>("[data-emulator-boot]")?.remove();
   app.querySelectorAll<HTMLElement>("[data-touch-controls]").forEach((touchControls) => {
@@ -662,8 +702,8 @@ function enableRuntimeControls(): void {
 
 function startEmulatorChromeSuppression(): void {
   stopEmulatorChromeSuppression();
-  suppressEmulatorChrome();
-  emulatorChromeObserver = new MutationObserver(() => suppressEmulatorChrome());
+  nativeEmulator.suppressRuntimeChrome();
+  emulatorChromeObserver = new MutationObserver(() => nativeEmulator.suppressRuntimeChrome());
   emulatorChromeObserver.observe(app, { childList: true, subtree: true });
 }
 
@@ -742,9 +782,9 @@ function readBootProgressSnapshot(): BootProgressSnapshot {
   return createBootProgressSnapshot(
     {
       hasCanvas: Boolean(document.querySelector("#game canvas")),
-      hasLoaderScript: Boolean(document.querySelector('script[data-emulatorjs="loader"]'))
+      hasLoaderScript: nativeEmulator.hasLoaderScript()
     },
-    window.EJS_emulator as unknown as BootProgressRuntime | undefined
+    nativeEmulator.getBootProgressRuntime()
   );
 }
 
@@ -789,56 +829,29 @@ function updateBootDebugPanel(): void {
 }
 
 function readBootDebugState(): BootDebugState {
-  const emulator = window.EJS_emulator as unknown as
-    | (BootProgressRuntime & {
-        config?: {
-          loadState?: string;
-        };
-        paused?: boolean;
-      })
-    | undefined;
-  const gameManager = emulator?.gameManager as
-    | {
-        getFrameNum?: () => number;
-        getVideoDimensions?: (dimension: "height" | "width") => number | undefined;
-      }
-    | undefined;
+  const debugInfo = nativeEmulator.readDebugInfo();
 
   return {
-    core: window.EJS_core ?? "none",
-    failed: emulator?.failedToStart === true,
-    frame: readDebugFrame(gameManager),
-    inputLog: window.__ponpokoInputLog ?? [],
-    loadStateUrl: emulator?.config?.loadState ?? window.EJS_loadStateURL ?? "none",
+    core: debugInfo.core,
+    failed: debugInfo.failed,
+    frame: debugInfo.frame,
+    inputLog: debugInfo.inputLog,
+    loadStateUrl: debugInfo.loadStateUrl,
     overlayVisible: Boolean(app.querySelector("[data-emulator-boot]")),
-    paused: emulator?.paused === true,
+    paused: debugInfo.paused,
     resources: readBootDebugResources(),
     runtimePrep: runtimePrepStatus,
-    started: emulator?.started === true,
+    started: debugInfo.started,
     status: app.querySelector("[data-game-status]")?.textContent ?? "none",
     touchZones: readBootDebugTouchZones(),
     touchLog: window.__ponpokoTouchLog ?? [],
-    videoHeight: gameManager?.getVideoDimensions?.("height") ?? null,
-    videoWidth: gameManager?.getVideoDimensions?.("width") ?? null
+    videoHeight: debugInfo.videoHeight,
+    videoWidth: debugInfo.videoWidth
   };
-}
-
-function readDebugFrame(gameManager: { getFrameNum?: () => number } | undefined): number {
-  try {
-    return gameManager?.getFrameNum?.() ?? 0;
-  } catch {
-    return 0;
-  }
 }
 
 function readBootDebugResources(): BootDebugState["resources"] {
-  const resources = performance.getEntriesByType("resource");
-
-  return {
-    coreDataRequests: resources.filter((entry) => entry.name.includes("/emulatorjs/cores/mame2003_plus-legacy-wasm.data")).length,
-    romRequests: resources.filter((entry) => entry.name.includes("/roms/ponpoko.zip")).length,
-    stateRequests: resources.filter((entry) => entry.name.includes("/states/ponpoko-start.state")).length
-  };
+  return nativeEmulator.readResourceDebug();
 }
 
 function readBootDebugTouchZones(): BootDebugState["touchZones"] {
@@ -895,7 +908,7 @@ function startStartupAssist(game: GameEntry): void {
   let attempts = 0;
   const assist = () => {
     attempts += 1;
-    void input.tapSequence(sequence, 70, 70);
+    void input.tapControlSequence(sequence, 70, 70);
     if (attempts >= 10) {
       stopStartupAssist();
     }
@@ -928,13 +941,6 @@ function releaseWakeLock(): void {
   wakeLock = null;
 }
 
-function releaseObjectUrl(): void {
-  if (activeObjectUrl) {
-    URL.revokeObjectURL(activeObjectUrl);
-    activeObjectUrl = null;
-  }
-}
-
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     input.releaseAll();
@@ -943,10 +949,10 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("pagehide", () => {
   input.releaseAll();
+  nativeEmulator.dispose();
   stopStartupAssist();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
   releaseWakeLock();
-  releaseObjectUrl();
 });

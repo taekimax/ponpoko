@@ -47,13 +47,6 @@ export interface ControllerProfile {
   swipe?: SwipeControls;
 }
 
-const dpadZones: ControlZone[] = [
-  { id: "zone-up", label: "위", action: "up", area: "up" },
-  { id: "zone-left", label: "왼쪽", action: "left", area: "left" },
-  { id: "zone-right", label: "오른쪽", action: "right", area: "right" },
-  { id: "zone-down", label: "아래", action: "down", area: "down" }
-];
-
 export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = {
   platformJump: {
     id: "platformJump",
@@ -83,57 +76,6 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     buttons: [
       { id: "button-jump", label: "점프", action: "jump", tone: "secondary" },
       { id: "button-attack", label: "공격", action: "attack", tone: "primary" }
-    ]
-  },
-  dpadOneButton: {
-    id: "dpadOneButton",
-    label: "4방향 + 액션",
-    hint: "4방향 이동 · 액션",
-    zonePlacement: "stage",
-    zones: dpadZones,
-    buttons: [
-      { id: "button-action", label: "액션", action: "action", tone: "primary" }
-    ]
-  },
-  tetris: {
-    id: "tetris",
-    label: "테트리스",
-    hint: "좌/우 이동 · 아래 낙하 · 회전",
-    zonePlacement: "stage",
-    zones: [
-      { id: "zone-left", label: "왼쪽", action: "left", area: "left" },
-      { id: "zone-down", label: "아래", action: "down", area: "center" },
-      { id: "zone-right", label: "오른쪽", action: "right", area: "right" }
-    ],
-    buttons: [
-      { id: "button-rotate", label: "회전", action: "rotate", tone: "primary" },
-      { id: "button-drop", label: "빠른 낙하", action: "fastDrop", tone: "secondary" }
-    ]
-  },
-  beatEmUp: {
-    id: "beatEmUp",
-    label: "벨트스크롤",
-    hint: "4방향 이동 · 공격/점프/특수",
-    zonePlacement: "stage",
-    zones: dpadZones,
-    buttons: [
-      { id: "button-attack", label: "공격", action: "attack", tone: "primary" },
-      { id: "button-jump", label: "점프", action: "jump", tone: "secondary" },
-      { id: "button-special", label: "특수", action: "special", tone: "danger" }
-    ]
-  },
-  puzzleAim: {
-    id: "puzzleAim",
-    label: "조준 + 발사",
-    hint: "좌/우 조준 · 발사",
-    zonePlacement: "stage",
-    zones: [
-      { id: "zone-left", label: "왼쪽", action: "left", area: "left" },
-      { id: "zone-fire", label: "발사", action: "fire", area: "center" },
-      { id: "zone-right", label: "오른쪽", action: "right", area: "right" }
-    ],
-    buttons: [
-      { id: "button-fire", label: "발사", action: "fire", tone: "primary" }
     ]
   },
   puzzleShoot: {

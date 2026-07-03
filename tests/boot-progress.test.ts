@@ -7,8 +7,7 @@ import {
 } from "../src/boot-progress";
 
 describe("emulator boot progress", () => {
-  const safariFreezeWarning =
-    "iPhone Safari에서는 이 단계에서 10~40초 동안 경과 표시가 멈출 수 있습니다. 앱이 멈춘 것이 아니며 자동으로 계속 진행됩니다.";
+  const safariFreezeWarning = "처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다.";
 
   it("warns immediately when MAME core initialization can block iPhone Safari timers", () => {
     const snapshot = getBootProgressSnapshot(

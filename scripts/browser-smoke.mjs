@@ -10,7 +10,10 @@ const baseUrl = configuredBaseUrl
   : `http://127.0.0.1:${port}/ponpoko/`;
 const appUrl = new URL("?bootDebug=1", baseUrl).href;
 const baseHost = new URL(baseUrl).hostname;
-const expectedRomUrl = new URL("roms/ponpoko.zip", baseUrl).href;
+const expectedRomBaseUrl = process.env.VITE_ROM_BASE_URL
+  ? ensureTrailingSlash(process.env.VITE_ROM_BASE_URL)
+  : new URL("roms/", baseUrl).href;
+const expectedRomUrl = new URL("ponpoko.zip", expectedRomBaseUrl).href;
 const expectedEmulatorBaseUrl = new URL("emulatorjs/", baseUrl).href;
 const expectedStartStatePath = "/ponpoko/states/ponpoko-start.state?v=20260701";
 const expectedStartStateUrl = new URL(`states/ponpoko-start.state?v=20260701`, baseUrl).href;
@@ -53,9 +56,11 @@ try {
     window.__smokeFetchCalls = [];
     window.__smokeAllInputCalls = [];
     window.fetch = (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
+      const url = input instanceof Request ? input.url : new URL(String(input), window.location.href).href;
+      const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
       window.__smokeFetchCalls.push({
         beforeLoaderScript: !document.querySelector('script[data-emulatorjs="loader"]'),
+        rangeHeader: headers.get("range"),
         url
       });
       return originalFetch(input, init);
@@ -88,12 +93,12 @@ try {
   await page.locator('[data-game-id="ponpoko"]').click();
   await page.locator("[data-game-status]").getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
   await page.getByText("에뮬레이터 준비 중").waitFor({ timeout: 5_000 });
-  await page.getByText(/자동으로 게임이 시작됩니다/).waitFor({ timeout: 5_000 });
+  await page.getByText(/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/).waitFor({ timeout: 5_000 });
   await page.getByText(/경과 \d+초/).waitFor({ timeout: 5_000 });
   await page.getByText("ROM 다운로드 완료").waitFor({ timeout: 5_000 });
   await page.getByText("EmulatorJS 로더 확인").waitFor({ timeout: 5_000 });
   await page.locator('[data-boot-step="emulator"]').waitFor({ timeout: 5_000 });
-  await page.getByText(/경과 표시가 멈출 수 있습니다/).waitFor({ timeout: 5_000 });
+  await page.getByText(/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/).waitFor({ timeout: 5_000 });
   await page.locator("[data-boot-phase]").getByText(/로더|초기화|런타임|캔버스|프레임/).waitFor({ timeout: 5_000 });
   const bootDetailState = await page.evaluate(() => ({
     detail: document.querySelector("[data-boot-detail]")?.textContent ?? "",
@@ -108,8 +113,8 @@ try {
   if (!/경과 \d+초/.test(bootDetailState.elapsed) || bootDetailState.steps.length < 5) {
     throw new Error(`Boot overlay is missing elapsed time or detailed steps: ${JSON.stringify(bootDetailState)}`);
   }
-  if (!/iPhone Safari.*경과 표시가 멈출 수 있습니다/.test(`${bootDetailState.detail} ${bootDetailState.note}`)) {
-    throw new Error(`Boot overlay does not pre-warn about iPhone Safari timer stalls: ${JSON.stringify(bootDetailState)}`);
+  if (!/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/.test(`${bootDetailState.detail} ${bootDetailState.note}`)) {
+    throw new Error(`Boot overlay does not briefly pre-warn about first-run stalls: ${JSON.stringify(bootDetailState)}`);
   }
   await page.locator("#game").waitFor({ timeout: 10_000 });
   await page.locator("canvas").first().waitFor({ timeout: 60_000 });
@@ -137,6 +142,8 @@ try {
     preLoaderEmulatorFetches: (window.__smokeFetchCalls ?? [])
       .filter((call) => call.beforeLoaderScript && call.url.startsWith("https://cdn.emulatorjs.org/stable/data/"))
       .map((call) => call.url),
+    romFetchCalls: (window.__smokeFetchCalls ?? [])
+      .filter((call) => call.url === window.__expectedSmokeRomUrl),
     emulatorCdnResources: performance.getEntriesByType("resource")
       .filter((entry) => entry.name.startsWith("https://cdn.emulatorjs.org/"))
       .map((entry) => entry.name),
@@ -175,6 +182,12 @@ try {
   if (runtimeState.romRequests !== 1) {
     throw new Error(`Expected one Ponpoko network ROM request before EmulatorJS startup, got ${runtimeState.romRequests}`);
   }
+  if (
+    runtimeState.romFetchCalls.length !== 1 ||
+    runtimeState.romFetchCalls.some((call) => call.rangeHeader !== null)
+  ) {
+    throw new Error(`Expected one complete Ponpoko ZIP fetch without Range headers, got ${JSON.stringify(runtimeState.romFetchCalls)}`);
+  }
   if (runtimeState.loadStateUrl !== expectedStartStatePath || runtimeState.configuredLoadState !== expectedStartStatePath) {
     throw new Error(`Expected Ponpoko post-warning start state to be configured, got ${JSON.stringify(runtimeState)}`);
   }
@@ -206,10 +219,37 @@ try {
   if (runtimeState.frame < 60 || runtimeState.videoWidth !== 288 || runtimeState.videoHeight !== 224) {
     throw new Error(`Ponpoko video did not advance as expected: ${JSON.stringify(runtimeState)}`);
   }
-  if (/Failed to start game|Load Content|Main Menu|Restart|Save State|Load State|Context Menu|Virtual Gamepad/.test(runtimeState.bodyText)) {
+  const canvasLayout = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    const stage = document.querySelector(".game-stage");
+    if (!canvas || !stage) {
+      return null;
+    }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    return {
+      canvasHeight: canvasRect.height,
+      canvasRatio: canvasRect.width / canvasRect.height,
+      canvasWidth: canvasRect.width,
+      expectedRatio: 288 / 224,
+      stageHeight: stageRect.height,
+      stageWidth: stageRect.width
+    };
+  });
+  if (
+    !canvasLayout ||
+    Math.abs(canvasLayout.canvasRatio - canvasLayout.expectedRatio) > 0.04 ||
+    Math.abs(canvasLayout.stageWidth / canvasLayout.stageHeight - canvasLayout.expectedRatio) > 0.04 ||
+    canvasLayout.stageWidth > 460 ||
+    canvasLayout.canvasHeight > canvasLayout.stageHeight + 1
+  ) {
+    throw new Error(`Ponpoko stage/canvas is not aspect-bound: ${JSON.stringify(canvasLayout)}`);
+  }
+  if (/Failed to start game|Load Content|Main Menu|Restart|Save State|Load State|Context Menu|Virtual Gamepad|Click to resume Emulator|\bundefined\b/.test(runtimeState.bodyText)) {
     throw new Error(`Unexpected emulator menu/error text: ${runtimeState.bodyText}`);
   }
-  if (/에뮬레이터 준비 중|자동으로 게임이 시작됩니다/.test(runtimeState.bodyText)) {
+  if (/에뮬레이터 준비 중/.test(runtimeState.bodyText)) {
     throw new Error(`Emulator boot overlay did not clear after startup: ${runtimeState.bodyText}`);
   }
 
@@ -219,7 +259,7 @@ try {
   }
 
   const visibleEmulatorChrome = await page.evaluate(() => {
-    const selectors = [".ejs_virtualGamepad_parent", ".ejs_menu_bar", ".ejs_context_menu", ".ejs_settings_parent"];
+    const selectors = [".ejs_virtualGamepad_parent", ".ejs_menu_bar", ".ejs_context_menu", ".ejs_settings_parent", ".ejs_popup_container"];
     return selectors.flatMap((selector) => {
       return [...document.querySelectorAll(selector)].flatMap((element) => {
         const style = getComputedStyle(element);
@@ -237,6 +277,34 @@ try {
 
   if (visibleEmulatorChrome.length > 0) {
     throw new Error(`Emulator chrome is visible over the game: ${JSON.stringify(visibleEmulatorChrome)}`);
+  }
+
+  const unsuppressedEmulatorChrome = await page.evaluate(() => {
+    const selectors = [".ejs_virtualGamepad_parent", ".ejs_menu_bar", ".ejs_context_menu", ".ejs_settings_parent", ".ejs_popup_container"];
+    return selectors.flatMap((selector) => {
+      return [...document.querySelectorAll(selector)].flatMap((element) => {
+        const style = getComputedStyle(element);
+        const suppressed =
+          element.hasAttribute("hidden") ||
+          element.inert === true ||
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          style.pointerEvents === "none";
+
+        return suppressed
+          ? []
+          : [{
+              pointerEvents: style.pointerEvents,
+              selector,
+              tagName: element.tagName,
+              visibility: style.visibility
+            }];
+      });
+    });
+  });
+
+  if (unsuppressedEmulatorChrome.length > 0) {
+    throw new Error(`Runtime chrome exists without hidden/inert/pointer-events suppression: ${JSON.stringify(unsuppressedEmulatorChrome)}`);
   }
 
   const visibleStageTouchZoneChrome = await page.evaluate(() => {
@@ -312,6 +380,69 @@ try {
   if (!leftControlLayout.text) {
     throw new Error(`Bottom left control is not visibly labeled: ${JSON.stringify(leftControlLayout)}`);
   }
+  const jumpControlLayout = await page.locator('[data-action="jump"]').first().evaluate((element) => ({
+    text: element.textContent?.trim() ?? ""
+  }));
+  if (!/▲.*점프.*▼/s.test(jumpControlLayout.text)) {
+    throw new Error(`Jump control does not show up/down swipe affordance: ${JSON.stringify(jumpControlLayout)}`);
+  }
+  const bottomControlLayout = await page.evaluate(() => {
+    const controls = [...document.querySelectorAll('[data-touch-surface="bottom"] [data-touch-zone]')];
+    const rects = controls.map((element) => element.getBoundingClientRect());
+    return {
+      bottom: Math.max(...rects.map((rect) => rect.bottom)),
+      top: Math.min(...rects.map((rect) => rect.top)),
+      viewportHeight: window.innerHeight
+    };
+  });
+  if (bottomControlLayout.bottom > bottomControlLayout.viewportHeight - 120) {
+    throw new Error(`Bottom controls are too low for comfortable vertical swipes: ${JSON.stringify(bottomControlLayout)}`);
+  }
+  const touchInterceptors = await page.evaluate(() => {
+    const controls = [...document.querySelectorAll('[data-action], [data-touch-zone]')].filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.pointerEvents !== "none";
+    });
+
+    return controls.flatMap((control) => {
+      const rect = control.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const stack = document.elementsFromPoint(x, y);
+      const top = stack[0] ?? null;
+      const topControl = top?.closest?.("[data-action], [data-touch-zone]") ?? null;
+      const hiddenBlockers = stack.filter((element) => {
+        const style = getComputedStyle(element);
+        const hidden = element.hasAttribute("hidden") ||
+          element.getAttribute("aria-hidden") === "true" ||
+          style.display === "none" ||
+          style.visibility === "hidden";
+        return hidden && !control.contains(element) && style.pointerEvents !== "none";
+      });
+
+      if (topControl !== control || hiddenBlockers.length > 0) {
+        return [{
+          action: control.getAttribute("data-action") ?? control.getAttribute("aria-label") ?? control.className,
+          hiddenBlockers: hiddenBlockers.map((element) => ({
+            className: element.className,
+            tagName: element.tagName
+          })),
+          topClassName: top?.className ?? "",
+          topTagName: top?.tagName ?? "none"
+        }];
+      }
+
+      return [];
+    });
+  });
+  if (touchInterceptors.length > 0) {
+    throw new Error(`Hidden overlay or unrelated element intercepts controls: ${JSON.stringify(touchInterceptors)}`);
+  }
   await page.mouse.move(leftBox.x + leftBox.width / 2, leftBox.y + leftBox.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(100);
@@ -322,9 +453,33 @@ try {
   }
 
   await holdControl(page, "left", 650);
+  const leftHoldCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(leftHoldCalls, 6, "left hold");
+  assertMinimumPresses(leftHoldCalls, 6, "left hold", 3);
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
   await holdControl(page, "jump", 350);
+  await page.waitForTimeout(120);
+  const jumpHoldCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(jumpHoldCalls, 0, "jump hold");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
   await swipeControl(page, "jump", "up");
+  const jumpSwipeUpCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(jumpSwipeUpCalls, 4, "jump-zone swipe up");
+  assertNoPressedInput(jumpSwipeUpCalls, 0, "jump-zone swipe up");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
   await swipeControl(page, "jump", "down");
+  const jumpSwipeDownCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(jumpSwipeDownCalls, 5, "jump-zone swipe down");
+  assertNoPressedInput(jumpSwipeDownCalls, 0, "jump-zone swipe down");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
   await tapTouchscreenControl(page, "left");
   await tapTouchscreenControl(page, "jump");
   await tapTouchscreenControl(page, "right");
@@ -337,17 +492,57 @@ try {
   }, { timeout: 5_000 });
 
   const inputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
-  assertInputPair(inputCalls, 6, "left");
-  assertMinimumPresses(inputCalls, 6, "left hold", 3);
-  assertInputPair(inputCalls, 0, "jump");
-  assertInputPair(inputCalls, 4, "swipe up");
-  assertInputPair(inputCalls, 5, "swipe down");
   assertInputPair(inputCalls, 6, "touchscreen left tap");
   assertInputPair(inputCalls, 0, "touchscreen jump tap");
   assertInputPair(inputCalls, 7, "touchscreen right tap");
 
+  const frameBeforeKeyboard = await page.evaluate(() => window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0);
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForTimeout(180);
+  await page.keyboard.up("ArrowLeft");
+  await page.keyboard.down("KeyQ");
+  await page.waitForTimeout(120);
+  await page.keyboard.up("KeyQ");
+  await page.waitForTimeout(250);
+  const keyboardInputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(keyboardInputCalls, 6, "keyboard left");
+  assertInputPair(keyboardInputCalls, 0, "keyboard jump");
+  const frameAfterKeyboard = await page.evaluate(() => window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0);
+  if (frameAfterKeyboard <= frameBeforeKeyboard) {
+    throw new Error(`Gameplay frames stopped during keyboard input: before=${frameBeforeKeyboard} after=${frameAfterKeyboard}`);
+  }
+
+  const scrollState = await page.evaluate(() => ({
+    scrollX: window.scrollX,
+    scrollY: window.scrollY
+  }));
+  if (scrollState.scrollX !== 0 || scrollState.scrollY !== 0) {
+    throw new Error(`Touch/keyboard controls scrolled the page: ${JSON.stringify(scrollState)}`);
+  }
+
+  await page.getByRole("button", { name: "메뉴" }).click();
+  await page.waitForURL(baseUrl, { timeout: 10_000 });
+  await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
+  const menuState = await page.evaluate(() => ({
+    bodyText: document.body.innerText,
+    canvasCount: document.querySelectorAll("#game canvas").length,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY
+  }));
+  if (
+    menuState.canvasCount !== 0 ||
+    /플레이 중|에뮬레이터 준비 중|다운로드 완료/.test(menuState.bodyText) ||
+    menuState.scrollX !== 0 ||
+    menuState.scrollY !== 0
+  ) {
+    throw new Error(`Menu disposal did not return to a clean menu state: ${JSON.stringify(menuState)}`);
+  }
+
   await browser.close();
-  console.log("browser smoke ok: WebKit Ponpoko ROM download, active mame2003_plus gameplay, and bottom touch controls verified");
+  console.log("browser smoke ok: WebKit Ponpoko ROM fetch, active gameplay, keyboard/touch input, overlay hit tests, no scroll, and menu disposal verified");
 } finally {
   server?.kill("SIGTERM");
 }
@@ -430,6 +625,13 @@ function assertMinimumPresses(calls, input, label, minimum) {
   const pressCount = calls.filter((call) => call.input === input && call.pressed === 1).length;
   if (pressCount < minimum) {
     throw new Error(`${label} did not sustain input ${input}; expected ${minimum} presses, got ${pressCount}: ${JSON.stringify(calls)}`);
+  }
+}
+
+function assertNoPressedInput(calls, input, label) {
+  const matching = calls.filter((call) => call.input === input && call.pressed === 1);
+  if (matching.length > 0) {
+    throw new Error(`${label} unexpectedly pressed input ${input}: ${JSON.stringify(calls)}`);
   }
 }
 

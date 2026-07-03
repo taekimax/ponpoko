@@ -3,16 +3,11 @@ import path from "node:path";
 
 const roms = [
   "ponpoko.zip",
-  "bubbobr1.zip",
-  "neobombe.zip",
-  "atetris.zip",
-  "snowbros.zip",
-  "dino.zip",
-  "pbobble.zip",
-  "penbros.zip",
-  "tnzs.zip",
-  "pang.zip"
+  "bublbobl1.zip",
+  "spangj.zip"
 ];
+const romDir = process.env.ARCADE_SAFARI_ROM_DIR ?? "/Volumes/dev/ponpoko/roms";
+const skipRoms = process.env.ARCADE_SAFARI_SKIP_ROMS === "1";
 const emulatorAssets = [
   "loader.js",
   "emulator.min.js",
@@ -31,9 +26,12 @@ if (!html.includes("/ponpoko/assets/")) {
   throw new Error("dist/index.html does not use /ponpoko/ asset paths");
 }
 
-for (const rom of roms) {
-  await assertZip(path.join("public/roms", rom));
-  await assertZip(path.join("dist/roms", rom));
+if (skipRoms) {
+  console.log("smoke note: external ROM checks skipped because ARCADE_SAFARI_SKIP_ROMS=1");
+} else {
+  for (const rom of roms) {
+    await assertZip(path.join(romDir, rom));
+  }
 }
 
 for (const asset of emulatorAssets) {
@@ -46,7 +44,11 @@ for (const asset of stateAssets) {
   await assertAsset(path.join("dist/states", asset));
 }
 
-console.log("smoke ok: build paths, ROM files, local EmulatorJS assets, and start states are available");
+console.log(
+  skipRoms
+    ? "smoke ok: build paths, local EmulatorJS assets, and start states are available; external ROM checks skipped"
+    : "smoke ok: build paths, external ROM files, local EmulatorJS assets, and start states are available"
+);
 
 async function assertZip(filePath) {
   const fileStat = await stat(filePath);

@@ -171,6 +171,18 @@ p {
   line-height: 1.45;
 }
 
+.loading-cautions {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: #d8cfae;
+  font-size: 13px;
+  line-height: 1.35;
+  list-style-position: inside;
+  text-align: left;
+}
+
 .primary-action,
 .secondary-action {
   width: 100%;
@@ -191,7 +203,8 @@ p {
 
 .play-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: start;
+  grid-template-rows: auto auto auto;
   gap: 10px;
   height: 100dvh;
   overflow: hidden;
@@ -253,6 +266,10 @@ p {
 
 .game-stage {
   position: relative;
+  justify-self: center;
+  width: min(100%, 430px);
+  aspect-ratio: 288 / 224;
+  max-height: min(44dvh, 334px);
   min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(246, 240, 223, 0.14);
@@ -260,22 +277,59 @@ p {
   background: #000000;
 }
 
-#game,
-#game > div,
-#game canvas {
-  width: 100% !important;
-  height: 100% !important;
+@media (hover: hover) and (pointer: fine) and (min-width: 900px) {
+  .play-shell {
+    gap: 12px;
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .game-stage {
+    width: auto;
+    height: min(64dvh, 560px);
+    max-height: none;
+  }
+
+  .control-panel {
+    justify-self: center;
+    width: min(100%, 720px);
+  }
+
+  .touch-zones-bottom {
+    height: clamp(92px, 13dvh, 132px);
+  }
 }
 
 #game {
   position: absolute;
   inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+#game .ejs_canvas_parent {
+  display: grid !important;
+  place-items: center;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#game canvas {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 100% !important;
+  aspect-ratio: 288 / 224;
+  image-rendering: pixelated;
+  object-fit: contain;
 }
 
 #game .ejs_virtualGamepad_parent,
 #game .ejs_menu_bar,
 #game .ejs_context_menu,
-#game .ejs_settings_parent {
+#game .ejs_settings_parent,
+#game .ejs_popup_container {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;
@@ -515,7 +569,22 @@ p {
 .touch-zones-bottom .area-center {
   background: #efc84a !important;
   color: #111111;
-  font-size: 17px;
+  font-size: 16px;
+}
+
+.jump-glyph {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  line-height: 1;
+}
+
+.jump-glyph span {
+  font-size: 16px;
+}
+
+.jump-glyph strong {
+  font-size: 16px;
 }
 
 .touch-zones-bottom .touch-zone:active,

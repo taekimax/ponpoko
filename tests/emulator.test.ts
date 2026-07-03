@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { CATALOG } from "../src/catalog";
-import { configureEmulator, getEmulatorWarmupUrls, suppressEmulatorChrome, warmUpEmulatorAssets } from "../src/emulator";
+import {
+  configureEmulator,
+  EmulatorJsNativeEmulator,
+  getEmulatorWarmupUrls,
+  suppressEmulatorChrome,
+  warmUpEmulatorAssets
+} from "../src/emulator";
 
 describe("EmulatorJS startup configuration", () => {
   it("warms only small shell assets and leaves large MAME core data to EmulatorJS startup", () => {
@@ -96,7 +102,7 @@ describe("EmulatorJS startup configuration", () => {
     const stubWindow = {};
     vi.stubGlobal("window", stubWindow);
 
-    configureEmulator(CATALOG[1], "roms/bubbobr1.zip", vi.fn());
+    configureEmulator(CATALOG[1], "roms/bublbobl1.zip", vi.fn());
 
     expect("EJS_loadStateURL" in stubWindow).toBe(false);
     vi.unstubAllGlobals();
@@ -148,4 +154,75 @@ describe("EmulatorJS startup configuration", () => {
     expect(toggleVirtualGamepad).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  it("hides EmulatorJS resume popups with other runtime chrome", () => {
+    const popup = createHideableElement();
+    const querySelectorAll = vi.fn((selector: string) => {
+      return selector.includes(".ejs_popup_container") ? [popup] : [];
+    });
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("document", {
+      querySelectorAll
+    });
+
+    suppressEmulatorChrome();
+
+    expect(querySelectorAll).toHaveBeenCalledWith(expect.stringContaining(".ejs_popup_container"));
+    expect(popup.hidden).toBe(true);
+    expect(popup.style.setProperty).toHaveBeenCalledWith("display", "none", "important");
+    expect(popup.style.setProperty).toHaveBeenCalledWith("pointer-events", "none", "important");
+    vi.unstubAllGlobals();
+  });
+
+  it("resumes EmulatorJS runtime audio contexts during user audio unlock", async () => {
+    const placeholderContext = createAudioContext("running");
+    const runtimeContext = createAudioContext("suspended");
+    function AudioContextMock(): AudioContext {
+      return placeholderContext;
+    }
+
+    vi.stubGlobal("window", {
+      AudioContext: AudioContextMock,
+      EJS_emulator: {
+        Module: {
+          AL: {
+            currentCtx: {
+              sources: [
+                {
+                  gain: {
+                    context: runtimeContext
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    await emulator.unlockAudio();
+
+    expect(runtimeContext.resume).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
 });
+
+function createHideableElement(): HTMLElement {
+  return {
+    hidden: false,
+    style: {
+      setProperty: vi.fn()
+    }
+  } as unknown as HTMLElement;
+}
+
+function createAudioContext(initialState: AudioContextState): AudioContext {
+  const context = {
+    state: initialState,
+    resume: vi.fn(async () => {
+      context.state = "running";
+    })
+  };
+  return context as unknown as AudioContext;
+}

@@ -3,10 +3,37 @@ export interface RomDownloadResult {
   objectUrl: string | null;
 }
 
+export interface RomArrayBufferDownloadResult {
+  arrayBuffer: ArrayBuffer;
+  byteLength: number;
+  contentType: string | null;
+}
+
 export interface RomDownloadOptions {
   fetcher?: typeof fetch;
   onProgress?: (percent: number) => void;
   createObjectUrl?: boolean;
+}
+
+export async function downloadRomArrayBuffer(
+  url: string,
+  options: RomDownloadOptions = {}
+): Promise<RomArrayBufferDownloadResult> {
+  const fetcher = options.fetcher ?? fetch;
+  const response = await fetcher(url);
+
+  if (!response.ok) {
+    throw new Error(`ROM을 다운로드하지 못했습니다. (${response.status})`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  options.onProgress?.(100);
+
+  return {
+    arrayBuffer,
+    byteLength: arrayBuffer.byteLength,
+    contentType: response.headers.get("content-type")
+  };
 }
 
 export async function downloadRom(url: string, options: RomDownloadOptions = {}): Promise<RomDownloadResult> {

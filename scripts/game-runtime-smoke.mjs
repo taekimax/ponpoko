@@ -7,9 +7,7 @@ const baseUrl = configuredBaseUrl
   ? ensureTrailingSlash(configuredBaseUrl)
   : `http://127.0.0.1:${port}/ponpoko/`;
 const appUrl = new URL("?bootDebug=1", baseUrl).href;
-const expectedRomBaseUrl = process.env.VITE_ROM_BASE_URL
-  ? ensureTrailingSlash(process.env.VITE_ROM_BASE_URL)
-  : new URL("roms/", baseUrl).href;
+const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
 const games = [
   {
     id: "bublbobl1",

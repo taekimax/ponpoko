@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/copy-root-roms-to-dist.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -13,7 +13,7 @@
     "notify:ayukawa": "node scripts/notify-ayukawa.mjs",
     "smoke": "node scripts/smoke.mjs",
     "games:smoke": "node scripts/game-runtime-smoke.mjs",
-    "browser:smoke": "node scripts/browser-smoke.mjs",
+    "browser:smoke": "node scripts/browser-smoke.mjs && node scripts/game-runtime-smoke.mjs && node scripts/ponpoko-prep-failure-smoke.mjs",
     "desktop:smoke": "node scripts/desktop-layout-smoke.mjs"
   },
   "dependencies": {

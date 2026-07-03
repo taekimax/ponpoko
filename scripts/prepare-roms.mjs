@@ -1,16 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { CATALOG_ROMS } from "./catalog-roms.mjs";
 
-const romDir = process.env.ARCADE_SAFARI_ROM_DIR ?? "/Volumes/dev/ponpoko/roms";
-const roms = ["ponpoko.zip", "bublbobl1.zip", "spangj.zip"];
-const skipRoms = process.env.ARCADE_SAFARI_SKIP_ROMS === "1";
+const romDir = path.join(process.cwd(), "roms");
 
-if (skipRoms) {
-  console.log("rom validation skipped because ARCADE_SAFARI_SKIP_ROMS=1");
-  process.exit(0);
-}
-
-for (const rom of roms) {
+for (const rom of CATALOG_ROMS) {
   await validateZip(path.join(romDir, rom));
   console.log(`rom ok ${rom}`);
 }

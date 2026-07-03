@@ -1,13 +1,10 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
+import { CATALOG_ROMS } from "./catalog-roms.mjs";
 
-const roms = [
-  "ponpoko.zip",
-  "bublbobl1.zip",
-  "spangj.zip"
-];
-const romDir = process.env.ARCADE_SAFARI_ROM_DIR ?? "/Volumes/dev/ponpoko/roms";
-const skipRoms = process.env.ARCADE_SAFARI_SKIP_ROMS === "1";
+const romDir = path.join(process.cwd(), "roms");
+const distRomDir = path.join(process.cwd(), "dist/roms");
 const emulatorAssets = [
   "loader.js",
   "emulator.min.js",
@@ -26,12 +23,18 @@ if (!html.includes("/ponpoko/assets/")) {
   throw new Error("dist/index.html does not use /ponpoko/ asset paths");
 }
 
-if (skipRoms) {
-  console.log("smoke note: external ROM checks skipped because ARCADE_SAFARI_SKIP_ROMS=1");
-} else {
-  for (const rom of roms) {
-    await assertZip(path.join(romDir, rom));
-  }
+const distRomFiles = (await readdir(distRomDir)).filter((fileName) => fileName.endsWith(".zip")).sort();
+if (JSON.stringify(distRomFiles) !== JSON.stringify([...CATALOG_ROMS].sort())) {
+  throw new Error(`dist/roms must contain only catalog ROMs, got ${JSON.stringify(distRomFiles)}`);
+}
+
+for (const rom of CATALOG_ROMS) {
+  const rootRom = path.join(romDir, rom);
+  const distRom = path.join(distRomDir, rom);
+
+  await assertZip(rootRom);
+  await assertZip(distRom);
+  await assertSameHash(rootRom, distRom);
 }
 
 for (const asset of emulatorAssets) {
@@ -44,11 +47,7 @@ for (const asset of stateAssets) {
   await assertAsset(path.join("dist/states", asset));
 }
 
-console.log(
-  skipRoms
-    ? "smoke ok: build paths, local EmulatorJS assets, and start states are available; external ROM checks skipped"
-    : "smoke ok: build paths, external ROM files, local EmulatorJS assets, and start states are available"
-);
+console.log("smoke ok: build paths, root/dist ROM hashes, local EmulatorJS assets, and start states are available");
 
 async function assertZip(filePath) {
   const fileStat = await stat(filePath);
@@ -67,4 +66,16 @@ async function assertAsset(filePath) {
   if (fileStat.size <= 0) {
     throw new Error(`${filePath} is empty`);
   }
+}
+
+async function assertSameHash(sourcePath, targetPath) {
+  const sourceHash = await sha256(sourcePath);
+  const targetHash = await sha256(targetPath);
+  if (sourceHash !== targetHash) {
+    throw new Error(`${targetPath} does not match ${sourcePath}: ${targetHash} !== ${sourceHash}`);
+  }
+}
+
+async function sha256(filePath) {
+  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }

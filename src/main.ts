@@ -17,6 +17,7 @@ import { type ControlAction, type ControllerProfile, getControllerProfile } from
 import { createNativeEmulator } from "./emulator";
 import { InputRouter } from "./input";
 import { downloadRomArrayBuffer } from "./rom-download";
+import { shouldEnableControlsAfterPrepFailure } from "./runtime-prep";
 import { getStartupAssistSequence } from "./startup-assist";
 import "./styles.css";
 
@@ -618,6 +619,12 @@ async function finalizeRuntimeControls(): Promise<void> {
     const prepared = await prepareRuntimeControls(state.game);
     if (!prepared) {
       runtimePrepStatus = "failed";
+      const snapshot = readBootProgressSnapshot();
+      if (shouldEnableControlsAfterPrepFailure(snapshot)) {
+        enableRuntimeControls();
+      } else {
+        renderBootFailure(snapshot);
+      }
       return;
     }
     enableRuntimeControls();

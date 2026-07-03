@@ -10,9 +10,7 @@ const baseUrl = configuredBaseUrl
   : `http://127.0.0.1:${port}/ponpoko/`;
 const appUrl = new URL("?bootDebug=1", baseUrl).href;
 const baseHost = new URL(baseUrl).hostname;
-const expectedRomBaseUrl = process.env.VITE_ROM_BASE_URL
-  ? ensureTrailingSlash(process.env.VITE_ROM_BASE_URL)
-  : new URL("roms/", baseUrl).href;
+const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
 const expectedRomUrl = new URL("ponpoko.zip", expectedRomBaseUrl).href;
 const expectedEmulatorBaseUrl = new URL("emulatorjs/", baseUrl).href;
 const expectedStartStatePath = "/ponpoko/states/ponpoko-start.state?v=20260701";

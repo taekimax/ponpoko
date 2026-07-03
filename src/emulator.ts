@@ -49,6 +49,7 @@ interface EmulatorJsRuntime {
   failedToStart?: boolean;
   gameManager?: {
     getFrameNum?: () => number;
+    getState?: () => Uint8Array;
     getVideoDimensions?: (dimension: "height" | "width") => number | undefined;
     loadState?: (state: Uint8Array) => void;
     simulateInput?: (player: number, input: number, pressed: number) => void;
@@ -111,6 +112,7 @@ declare global {
     EJS_core?: string;
     EJS_color?: string;
     EJS_pathtodata?: string;
+    EJS_gameID?: string;
     EJS_startOnLoaded?: boolean;
     EJS_alignStartButton?: string;
     EJS_startButtonName?: string;
@@ -119,7 +121,9 @@ declare global {
     EJS_Buttons?: Record<string, boolean>;
     EJS_defaultOptions?: Record<string, string>;
     EJS_disableDatabases?: boolean;
+    EJS_disableLocalStorage?: boolean;
     EJS_forceLegacyCores?: boolean;
+    EJS_hideSettings?: string[];
     EJS_loadStateURL?: string;
     EJS_defaultControls?: unknown;
     EJS_VirtualGamepadSettings?: unknown[];
@@ -200,14 +204,21 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   window.EJS_core = game.core;
   window.EJS_color = "#e64040";
   window.EJS_pathtodata = EMULATOR_DATA_PATH;
+  window.EJS_gameID = game.id;
   window.EJS_disableDatabases = true;
+  window.EJS_disableLocalStorage = true;
   window.EJS_startOnLoaded = true;
   window.EJS_alignStartButton = "center";
   window.EJS_startButtonName = "게임 시작";
   window.EJS_controlScheme = "mame";
   window.EJS_videoRotation = game.rotation;
-  window.EJS_defaultOptions = { ...game.emulator.defaultOptions };
+  window.EJS_defaultOptions = {
+    ...game.emulator.defaultOptions,
+    "menu-bar-button": "hidden",
+    "virtual-gamepad": "disabled"
+  };
   window.EJS_forceLegacyCores = game.emulator.forceLegacyCores;
+  window.EJS_hideSettings = ["menu-bar-button", "virtual-gamepad", "virtual-gamepad-left-handed-mode"];
   if (game.emulator.loadStateUrl) {
     window.EJS_loadStateURL = game.emulator.loadStateUrl;
   } else {
@@ -236,16 +247,18 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   };
   window.EJS_defaultControls = {
     0: {
-      0: { value: "a", value2: "BUTTON_1" },
-      1: { value: "s", value2: "BUTTON_2" },
-      2: { value: "v", value2: "SELECT" },
+      0: { value: "z", value2: "BUTTON_1" },
+      1: { value: "x", value2: "BUTTON_2" },
+      2: { value: "5", value2: "SELECT" },
       3: { value: "enter", value2: "START" },
       4: { value: "up arrow", value2: "DPAD_UP" },
       5: { value: "down arrow", value2: "DPAD_DOWN" },
       6: { value: "left arrow", value2: "DPAD_LEFT" },
       7: { value: "right arrow", value2: "DPAD_RIGHT" },
-      8: { value: "z", value2: "BUTTON_3" },
-      9: { value: "x", value2: "BUTTON_4" }
+      8: { value: "c", value2: "BUTTON_3" },
+      9: { value: "a", value2: "BUTTON_4" },
+      10: { value: "s", value2: "BUTTON_5" },
+      11: { value: "d", value2: "BUTTON_6" }
     },
     1: {},
     2: {},
@@ -346,6 +359,14 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
 
   reset(): void {
     this.releaseActiveInputs();
+  }
+
+  async saveState(): Promise<Uint8Array | null> {
+    return null;
+  }
+
+  async loadState(_state: Uint8Array): Promise<boolean> {
+    return false;
   }
 
   press(input: EmulatorInput): void {
@@ -481,6 +502,14 @@ class RuntimeSelectingNativeEmulator implements NativeRuntimeAdapter {
     this.active.reset();
   }
 
+  async saveState(): Promise<Uint8Array | null> {
+    return this.active.saveState();
+  }
+
+  async loadState(state: Uint8Array): Promise<boolean> {
+    return this.active.loadState(state);
+  }
+
   press(input: EmulatorInput): void {
     this.active.press(input);
   }
@@ -608,6 +637,34 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
 
   reset(): void {
     this.releaseActiveInputs();
+  }
+
+  async saveState(): Promise<Uint8Array | null> {
+    const getState = this.getRuntime()?.gameManager?.getState;
+    if (!getState) {
+      return null;
+    }
+
+    try {
+      const state = getState();
+      return state.byteLength > 0 ? new Uint8Array(state) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async loadState(state: Uint8Array): Promise<boolean> {
+    const loadState = this.getRuntime()?.gameManager?.loadState;
+    if (!loadState || state.byteLength === 0) {
+      return false;
+    }
+
+    try {
+      loadState(new Uint8Array(state));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   press(input: EmulatorInput): void {

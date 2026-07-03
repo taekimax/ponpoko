@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeNativeEmulator, type EmulatorInput } from "../src/native-emulator";
 import { InputRouter } from "../src/input";
 
 describe("InputRouter", () => {
-  it("maps temporary keyboard controls to generic emulator inputs", () => {
+  it("maps desktop keyboard controls to generic emulator inputs", () => {
     const emulator = new FakeNativeEmulator();
     const target = new EventTarget();
     const router = new InputRouter(emulator);
@@ -14,12 +14,16 @@ describe("InputRouter", () => {
       ["ArrowRight", "ArrowRight", "right"],
       ["ArrowUp", "ArrowUp", "up"],
       ["ArrowDown", "ArrowDown", "down"],
-      ["KeyQ", "q", "action1"],
-      ["KeyW", "w", "action2"],
-      ["KeyE", "e", "action3"],
+      ["Space", " ", "action1"],
+      ["KeyZ", "z", "action1"],
+      ["KeyX", "x", "action2"],
+      ["KeyC", "c", "action3"],
       ["KeyA", "a", "action4"],
       ["KeyS", "s", "action5"],
       ["KeyD", "d", "action6"],
+      ["Digit5", "5", "coin"],
+      ["Enter", "Enter", "start"],
+      ["KeyP", "p", "start"],
       ["BracketLeft", "[", "special1"],
       ["BracketRight", "]", "special2"],
       ["Backslash", "\\", "special3"]
@@ -38,15 +42,35 @@ describe("InputRouter", () => {
     );
   });
 
+  it("maps the OK keyboard key to the MAME warning acknowledgement sequence", async () => {
+    vi.useFakeTimers();
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    router.attachKeyboard(target);
+
+    target.dispatchEvent(keyboardEvent("keydown", "KeyO", "o"));
+    await vi.runAllTimersAsync();
+    target.dispatchEvent(keyboardEvent("keyup", "KeyO", "o"));
+
+    expect(emulator.inputCalls).toEqual([
+      { input: "left", type: "press" },
+      { input: "left", type: "release" },
+      { input: "right", type: "press" },
+      { input: "right", type: "release" }
+    ]);
+    vi.useRealTimers();
+  });
+
   it("ignores repeat keydown while a key is already active", () => {
     const emulator = new FakeNativeEmulator();
     const target = new EventTarget();
     const router = new InputRouter(emulator);
     router.attachKeyboard(target);
 
-    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q"));
-    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q", true));
-    target.dispatchEvent(keyboardEvent("keyup", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z", true));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyZ", "z"));
 
     expect(emulator.inputCalls).toEqual([
       { input: "action1", type: "press" },
@@ -62,8 +86,8 @@ describe("InputRouter", () => {
 
     router.pressControl("jump");
     router.releaseControl("jump");
-    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q"));
-    target.dispatchEvent(keyboardEvent("keyup", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyZ", "z"));
 
     expect(emulator.inputCalls).toEqual([
       { input: "action1", type: "press" },
@@ -84,7 +108,7 @@ describe("InputRouter", () => {
     target.dispatchEvent(new Event("blur"));
     router.pressControl("right");
     router.dispose();
-    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z"));
 
     expect(emulator.inputCalls).toEqual([
       { input: "left", type: "press" },

@@ -28,11 +28,22 @@ try {
   const layout = await page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     const stage = document.querySelector(".game-stage");
-    const controls = document.querySelector(".control-panel");
+    const controls = document.querySelector(".keyboard-control-panel") ?? document.querySelector(".control-panel");
+    const keyboardPanel = document.querySelector(".keyboard-control-panel");
+    const mobilePanel = document.querySelector(".mobile-control-panel");
+    const stageTouchZones = document.querySelector(".touch-zones-stage");
     if (!canvas || !stage || !controls) {
       return null;
     }
 
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
     const canvasRect = canvas.getBoundingClientRect();
     const stageRect = stage.getBoundingClientRect();
     const controlsRect = controls.getBoundingClientRect();
@@ -42,9 +53,14 @@ try {
       canvasWidth: canvasRect.width,
       desktopMedia: matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)").matches,
       expectedRatio: 288 / 224,
+      keyboardText: keyboardPanel?.textContent ?? "",
+      keyboardVisible: isVisible(keyboardPanel),
+      mobilePanelVisible: isVisible(mobilePanel),
       stageHeight: stageRect.height,
       stageRatio: stageRect.width / stageRect.height,
       stageWidth: stageRect.width,
+      stageTouchZonesVisible: isVisible(stageTouchZones),
+      topbarText: document.querySelector(".game-topbar")?.textContent ?? "",
       controlsTop: controlsRect.top,
       viewportHeight: innerHeight,
       viewportWidth: innerWidth
@@ -65,6 +81,21 @@ try {
     layout.controlsTop >= layout.viewportHeight
   ) {
     throw new Error(`Desktop Chrome game layout is not expanded appropriately: ${JSON.stringify(layout)}`);
+  }
+  if (
+    !layout.keyboardVisible ||
+    layout.mobilePanelVisible ||
+    layout.stageTouchZonesVisible ||
+    !/이동/.test(layout.keyboardText) ||
+    !/Space/.test(layout.keyboardText) ||
+    !/동전/.test(layout.keyboardText) ||
+    !/OK/.test(layout.keyboardText) ||
+    !/Enter/.test(layout.keyboardText) ||
+    !/동전5/.test(layout.topbarText.replace(/\s/g, "")) ||
+    !/OKO/.test(layout.topbarText.replace(/\s/g, "")) ||
+    !/플레이Enter/.test(layout.topbarText.replace(/\s/g, ""))
+  ) {
+    throw new Error(`Desktop Chrome did not switch from mobile controls to keyboard controls: ${JSON.stringify(layout)}`);
   }
 
   await browser.close();

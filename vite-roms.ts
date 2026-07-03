@@ -1,8 +1,12 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Connect } from "vite";
 
-export const EXTERNAL_ROM_DIR = process.env.ARCADE_SAFARI_ROM_DIR ?? "/Volumes/dev/ponpoko/roms";
+const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_ROM_DIR = path.join(REPO_ROOT, "roms");
+
+export const EXTERNAL_ROM_DIR = process.env.ARCADE_SAFARI_ROM_DIR ?? DEFAULT_ROM_DIR;
 
 const ROM_ROUTE_PREFIX = "/ponpoko/roms/";
 

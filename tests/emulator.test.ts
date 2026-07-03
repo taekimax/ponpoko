@@ -77,6 +77,7 @@ describe("EmulatorJS startup configuration", () => {
     expect(stubWindow).toMatchObject({
       EJS_pathtodata: "/ponpoko/emulatorjs/",
       EJS_disableDatabases: true,
+      EJS_disableLocalStorage: true,
       EJS_forceLegacyCores: true
     });
     vi.unstubAllGlobals();
@@ -115,6 +116,7 @@ describe("EmulatorJS startup configuration", () => {
     configureEmulator(CATALOG[0], "roms/ponpoko.zip", vi.fn());
 
     expect(stubWindow).toMatchObject({
+      EJS_gameID: "ponpoko",
       EJS_VirtualGamepadSettings: [],
       EJS_Buttons: expect.objectContaining({
         fullscreen: true,
@@ -127,9 +129,35 @@ describe("EmulatorJS startup configuration", () => {
       })
     });
     expect(stubWindow).toMatchObject({
-      EJS_defaultOptions: {
+      EJS_defaultOptions: expect.objectContaining({
         "mame2003-plus_skip_disclaimer": "enabled",
-        "mame2003-plus_skip_warnings": "enabled"
+        "mame2003-plus_skip_warnings": "enabled",
+        "menu-bar-button": "hidden",
+        "virtual-gamepad": "disabled"
+      }),
+      EJS_hideSettings: ["menu-bar-button", "virtual-gamepad", "virtual-gamepad-left-handed-mode"]
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("aligns EmulatorJS default keyboard controls with the app desktop controls", () => {
+    const stubWindow = {};
+    vi.stubGlobal("window", stubWindow);
+
+    configureEmulator(CATALOG[1], "roms/bublbobl1.zip", vi.fn());
+
+    expect(stubWindow).toMatchObject({
+      EJS_defaultControls: {
+        0: expect.objectContaining({
+          0: { value: "z", value2: "BUTTON_1" },
+          1: { value: "x", value2: "BUTTON_2" },
+          2: { value: "5", value2: "SELECT" },
+          3: { value: "enter", value2: "START" },
+          8: { value: "c", value2: "BUTTON_3" },
+          9: { value: "a", value2: "BUTTON_4" },
+          10: { value: "s", value2: "BUTTON_5" },
+          11: { value: "d", value2: "BUTTON_6" }
+        })
       }
     });
     vi.unstubAllGlobals();
@@ -204,6 +232,29 @@ describe("EmulatorJS startup configuration", () => {
     await emulator.unlockAudio();
 
     expect(runtimeContext.resume).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("captures and restores EmulatorJS runtime states through the game manager", async () => {
+    const state = new Uint8Array([1, 2, 3]);
+    const getState = vi.fn(() => state);
+    const loadState = vi.fn();
+    vi.stubGlobal("window", {
+      EJS_emulator: {
+        gameManager: {
+          getState,
+          loadState
+        }
+      }
+    });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    const savedState = await emulator.saveState();
+    state[0] = 9;
+
+    expect(savedState).toEqual(new Uint8Array([1, 2, 3]));
+    await expect(emulator.loadState(new Uint8Array([4, 5, 6]))).resolves.toBe(true);
+    expect(loadState).toHaveBeenCalledWith(new Uint8Array([4, 5, 6]));
     vi.unstubAllGlobals();
   });
 });

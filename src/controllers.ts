@@ -47,6 +47,12 @@ export interface ControllerProfile {
   swipe?: SwipeControls;
 }
 
+export interface KeyboardControlHint {
+  id: string;
+  keys: string[];
+  label: string;
+}
+
 export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = {
   platformJump: {
     id: "platformJump",
@@ -97,4 +103,56 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
 
 export function getControllerProfile(game: GameEntry): ControllerProfile {
   return CONTROL_PROFILES[game.controllerProfile];
+}
+
+export function getKeyboardControlHints(profile: ControllerProfile): KeyboardControlHint[] {
+  return [
+    {
+      id: "move",
+      keys: ["←", "↑", "↓", "→"],
+      label: "이동"
+    },
+    ...getKeyboardActionHints(profile),
+    {
+      id: "coin",
+      keys: ["5"],
+      label: "동전"
+    },
+    {
+      id: "ok",
+      keys: ["O"],
+      label: "OK"
+    },
+    {
+      id: "play",
+      keys: ["Enter", "P"],
+      label: "플레이"
+    }
+  ];
+}
+
+function getKeyboardActionHints(profile: ControllerProfile): KeyboardControlHint[] {
+  const actions = profile.buttons.length > 0
+    ? profile.buttons.map((button) => ({ action: button.action, id: button.id, label: button.label }))
+    : profile.zones
+        .filter((zone) => !["left", "right", "up", "down"].includes(zone.action))
+        .map((zone) => ({ action: zone.action, id: zone.id, label: zone.label }));
+
+  return actions.map((action) => ({
+    id: action.id,
+    keys: getKeyboardActionKeys(action.action),
+    label: action.label
+  }));
+}
+
+function getKeyboardActionKeys(action: ControlAction): string[] {
+  if (action === "attack" || action === "wire") {
+    return ["X"];
+  }
+
+  if (action === "special") {
+    return ["C"];
+  }
+
+  return ["Space", "Z"];
 }

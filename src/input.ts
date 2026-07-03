@@ -3,8 +3,9 @@ import type { EmulatorInput, NativeEmulator } from "./native-emulator";
 
 interface KeyboardInputBinding {
   code: string;
-  input: EmulatorInput;
+  input?: EmulatorInput;
   key: string;
+  sequence?: EmulatorInput[];
 }
 
 const KEYBOARD_INPUTS: KeyboardInputBinding[] = [
@@ -12,18 +13,23 @@ const KEYBOARD_INPUTS: KeyboardInputBinding[] = [
   { code: "ArrowRight", input: "right", key: "ArrowRight" },
   { code: "ArrowUp", input: "up", key: "ArrowUp" },
   { code: "ArrowDown", input: "down", key: "ArrowDown" },
-  { code: "KeyQ", input: "action1", key: "q" },
-  { code: "KeyW", input: "action2", key: "w" },
-  { code: "KeyE", input: "action3", key: "e" },
+  { code: "Space", input: "action1", key: " " },
+  { code: "KeyZ", input: "action1", key: "z" },
+  { code: "KeyX", input: "action2", key: "x" },
+  { code: "KeyC", input: "action3", key: "c" },
   { code: "KeyA", input: "action4", key: "a" },
   { code: "KeyS", input: "action5", key: "s" },
   { code: "KeyD", input: "action6", key: "d" },
+  { code: "Digit5", input: "coin", key: "5" },
+  { code: "Enter", input: "start", key: "enter" },
+  { code: "KeyP", input: "start", key: "p" },
+  { code: "KeyO", key: "o", sequence: ["left", "right"] },
   { code: "BracketLeft", input: "special1", key: "[" },
   { code: "BracketRight", input: "special2", key: "]" },
   { code: "Backslash", input: "special3", key: "\\" }
 ];
 
-const CONTROL_INPUTS: Record<ControlAction, EmulatorInput> = {
+const CONTROL_INPUTS: Partial<Record<ControlAction, EmulatorInput>> = {
   action: "action1",
   attack: "action2",
   back: "coin",
@@ -33,7 +39,6 @@ const CONTROL_INPUTS: Record<ControlAction, EmulatorInput> = {
   fire: "action1",
   jump: "action1",
   left: "left",
-  ok: "start",
   right: "right",
   rotate: "action1",
   special: "action3",
@@ -42,12 +47,16 @@ const CONTROL_INPUTS: Record<ControlAction, EmulatorInput> = {
   wire: "action2"
 };
 
+const CONTROL_SEQUENCES: Partial<Record<ControlAction, EmulatorInput[]>> = {
+  ok: ["left", "right"]
+};
+
 const SUSTAINED_INPUTS = new Set<EmulatorInput>(["left", "right"]);
 const SUSTAIN_INTERVAL_MS = 120;
 
 export class InputRouter {
   private readonly activeInputCounts = new Map<EmulatorInput, number>();
-  private readonly activeKeys = new Map<string, EmulatorInput>();
+  private readonly activeKeys = new Map<string, EmulatorInput | null>();
   private readonly keyboardDisposers: Array<() => void> = [];
   private readonly sustainTimers = new Map<EmulatorInput, ReturnType<typeof setInterval>>();
 
@@ -72,11 +81,23 @@ export class InputRouter {
   }
 
   pressControl(action: ControlAction): void {
-    this.press(CONTROL_INPUTS[action]);
+    const input = CONTROL_INPUTS[action];
+    if (input) {
+      this.press(input);
+      return;
+    }
+
+    const sequence = CONTROL_SEQUENCES[action];
+    if (sequence) {
+      void this.tapInputSequence(sequence);
+    }
   }
 
   releaseControl(action: ControlAction): void {
-    this.release(CONTROL_INPUTS[action]);
+    const input = CONTROL_INPUTS[action];
+    if (input) {
+      this.release(input);
+    }
   }
 
   press(input: EmulatorInput): void {
@@ -102,15 +123,12 @@ export class InputRouter {
   }
 
   tapControl(action: ControlAction, durationMs = 80): void {
-    this.pressControl(action);
-    globalThis.setTimeout(() => this.releaseControl(action), durationMs);
+    void this.tapControlAction(action, durationMs);
   }
 
   async tapControlSequence(actions: ControlAction[], durationMs = 90, gapMs = 80): Promise<void> {
     for (const action of actions) {
-      this.pressControl(action);
-      await delay(durationMs);
-      this.releaseControl(action);
+      await this.tapControlAction(action, durationMs);
       await delay(gapMs);
     }
   }
@@ -132,8 +150,8 @@ export class InputRouter {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
-    const input = getKeyboardInput(event);
-    if (!input) {
+    const binding = getKeyboardInput(event);
+    if (!binding) {
       return;
     }
 
@@ -143,20 +161,48 @@ export class InputRouter {
       return;
     }
 
-    this.activeKeys.set(keyId, input);
-    this.press(input);
+    this.activeKeys.set(keyId, binding.input ?? null);
+
+    if (binding.input) {
+      this.press(binding.input);
+    } else if (binding.sequence) {
+      void this.tapInputSequence(binding.sequence);
+    }
   }
 
   private handleKeyUp(event: KeyboardEvent): void {
     const keyId = getKeyboardEventId(event);
     const input = this.activeKeys.get(keyId);
-    if (!input) {
+    if (!this.activeKeys.has(keyId)) {
       return;
     }
 
     event.preventDefault();
     this.activeKeys.delete(keyId);
-    this.release(input);
+    if (input) {
+      this.release(input);
+    }
+  }
+
+  private async tapControlAction(action: ControlAction, durationMs: number): Promise<void> {
+    const sequence = CONTROL_SEQUENCES[action];
+    if (sequence) {
+      await this.tapInputSequence(sequence, durationMs, 70);
+      return;
+    }
+
+    this.pressControl(action);
+    await delay(durationMs);
+    this.releaseControl(action);
+  }
+
+  private async tapInputSequence(inputs: EmulatorInput[], durationMs = 80, gapMs = 70): Promise<void> {
+    for (const input of inputs) {
+      this.press(input);
+      await delay(durationMs);
+      this.release(input);
+      await delay(gapMs);
+    }
   }
 
   private startSustain(input: EmulatorInput): void {
@@ -187,11 +233,11 @@ export class InputRouter {
   }
 }
 
-function getKeyboardInput(event: KeyboardEvent): EmulatorInput | null {
+function getKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {
   const code = event.code;
   const key = event.key.toLowerCase();
   const binding = KEYBOARD_INPUTS.find((candidate) => candidate.code === code || candidate.key === key);
-  return binding?.input ?? null;
+  return binding ?? null;
 }
 
 function getKeyboardEventId(event: KeyboardEvent): string {

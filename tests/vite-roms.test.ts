@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { EXTERNAL_ROM_DIR, applyExternalRomHeaders, resolveExternalRomPath } from "../vite-roms";
 
 describe("external ROM server paths", () => {
-  it("defaults to the shared local ROM workspace", () => {
-    expect(EXTERNAL_ROM_DIR).toBe("/Volumes/dev/ponpoko/roms");
+  it("defaults to the repo-local ROM directory", () => {
+    expect(EXTERNAL_ROM_DIR).toBe(path.resolve("roms"));
   });
 
   it("resolves same-origin ROM URLs to the external ROM directory", () => {

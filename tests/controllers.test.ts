@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../src/catalog";
-import { CONTROL_PROFILES, getControllerProfile } from "../src/controllers";
+import { CONTROL_PROFILES, getControllerProfile, getKeyboardControlHints } from "../src/controllers";
 
 describe("controller profiles", () => {
   it("defines a controller profile for every catalog game", () => {
@@ -39,6 +39,19 @@ describe("controller profiles", () => {
     expect(getControllerProfile(CATALOG.find((game) => game.id === "spangj")!).buttons.map((button) => button.label)).toEqual([
       "발사",
       "와이어"
+    ]);
+  });
+
+  it("shows desktop keyboard hints with assigned arcade service keys", () => {
+    const bubbleProfile = getControllerProfile(CATALOG.find((game) => game.id === "bublbobl1")!);
+
+    expect(getKeyboardControlHints(bubbleProfile)).toEqual([
+      { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
+      { id: "button-jump", keys: ["Space", "Z"], label: "점프" },
+      { id: "button-attack", keys: ["X"], label: "공격" },
+      { id: "coin", keys: ["5"], label: "동전" },
+      { id: "ok", keys: ["O"], label: "OK" },
+      { id: "play", keys: ["Enter", "P"], label: "플레이" }
     ]);
   });
 });

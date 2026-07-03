@@ -13,12 +13,18 @@ import {
   type BootDebugTouch
 } from "./boot-debug";
 import { CATALOG, type GameEntry, getRomPath, getThumbnailPath } from "./catalog";
-import { type ControlAction, type ControllerProfile, getControllerProfile } from "./controllers";
+import {
+  type ControlAction,
+  type ControllerProfile,
+  getControllerProfile,
+  getKeyboardControlHints
+} from "./controllers";
 import { createNativeEmulator } from "./emulator";
 import { InputRouter } from "./input";
 import { downloadRomArrayBuffer } from "./rom-download";
 import { shouldEnableControlsAfterPrepFailure } from "./runtime-prep";
 import { getStartupAssistSequence } from "./startup-assist";
+import { loadAutosaveState, saveAutosaveState } from "./state-storage";
 import "./styles.css";
 
 type ViewState =
@@ -36,10 +42,13 @@ declare global {
 const app = getRequiredAppRoot();
 const nativeEmulator = createNativeEmulator();
 const input = new InputRouter(nativeEmulator);
+const AUTOSAVE_INTERVAL_MS = 60_000;
 const SWIPE_THRESHOLD_PX = 34;
 const TOUCH_POINTER_PREFIX = "touch:";
 const POINTER_PREFIX = "pointer:";
 let state: ViewState = { name: "menu", intro: true };
+let autosaveTimer: number | null = null;
+let autosaveInFlight = false;
 let wakeLock: WakeLockSentinel | null = null;
 let startupAssistTimer: number | null = null;
 let emulatorChromeObserver: MutationObserver | null = null;
@@ -48,6 +57,7 @@ let bootProgressStartedAt = 0;
 let bootDebugTimer: number | null = null;
 let runtimeControlsEnabled = false;
 let runtimeControlsFinalizing = false;
+let runtimeAutosaveRestored = false;
 let runtimePrepStatus: BootDebugRuntimePrep = "pending";
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
 
@@ -87,6 +97,7 @@ function render(): void {
 }
 
 function renderMenu(showIntro: boolean): void {
+  stopAutosave();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -151,6 +162,7 @@ function renderIntroDialog(): string {
 }
 
 function renderLoading(game: GameEntry, progress: number, message: string): void {
+  stopAutosave();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -185,31 +197,43 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
           <strong>${game.titleKo}</strong>
           <span data-game-status>${status}</span>
         </div>
-        <button class="coin-button" type="button" data-action="coin">동전</button>
-        <button class="ok-button" type="button" data-action="ok">OK</button>
-        <button class="start-button" type="button" data-action="start">시작</button>
+        ${renderTopbarAction("coin-button", "coin", "동전", "5")}
+        ${renderTopbarAction("ok-button", "ok", "OK", "O")}
+        ${renderTopbarAction("start-button", "start", "플레이", "Enter")}
       </header>
       <section class="game-stage">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
         ${usesBottomZones ? "" : renderTouchZones(profile, controlsEnabled, "stage")}
       </section>
-      <section class="control-panel ${usesBottomZones ? "has-bottom-zones" : ""}">
+      <section class="control-panel mobile-control-panel ${usesBottomZones ? "has-bottom-zones" : ""}">
         <p>${profile.hint}</p>
         ${usesBottomZones ? renderTouchZones(profile, controlsEnabled, "bottom") : ""}
         ${renderActionButtons(profile)}
       </section>
+      ${renderKeyboardControls(profile)}
       ${bootDebugEnabled ? renderBootDebugPanel() : ""}
     </main>
   `;
 
   app.querySelector<HTMLButtonElement>("[data-back]")?.addEventListener("click", () => {
     input.releaseAll();
+    void saveActiveAutosave();
+    stopAutosave();
     nativeEmulator.dispose();
     window.location.href = "/ponpoko/";
   });
 
   wireControls(app, profile);
+}
+
+function renderTopbarAction(className: string, action: ControlAction, label: string, keyLabel: string): string {
+  return `
+    <button class="${className}" type="button" data-action="${action}">
+      <span>${label}</span>
+      <kbd>${keyLabel}</kbd>
+    </button>
+  `;
 }
 
 function renderTouchZones(profile: ControllerProfile, controlsEnabled: boolean, surface: "bottom" | "stage"): string {
@@ -267,6 +291,19 @@ function renderActionButtons(profile: ControllerProfile): string {
   `;
 }
 
+function renderKeyboardControls(profile: ControllerProfile): string {
+  return `
+    <section class="keyboard-control-panel" aria-label="키보드 조작">
+      ${getKeyboardControlHints(profile).map((hint) => `
+        <div class="keyboard-hint" data-keyboard-hint="${hint.id}">
+          <strong>${hint.label}</strong>
+          <span>${hint.keys.map((key) => `<kbd>${key}</kbd>`).join("")}</span>
+        </div>
+      `).join("")}
+    </section>
+  `;
+}
+
 function renderEmulatorBootOverlay(): string {
   return `
     <div class="emulator-boot-overlay" data-emulator-boot aria-live="polite">
@@ -298,6 +335,7 @@ function renderBootDebugPanel(): string {
 }
 
 function renderError(game: GameEntry, message: string): void {
+  stopAutosave();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   app.innerHTML = `
@@ -319,6 +357,8 @@ function renderError(game: GameEntry, message: string): void {
   });
   app.querySelector<HTMLButtonElement>("[data-menu]")?.addEventListener("click", () => {
     input.releaseAll();
+    void saveActiveAutosave();
+    stopAutosave();
     nativeEmulator.dispose();
     setState({ name: "menu", intro: false });
   });
@@ -326,12 +366,15 @@ function renderError(game: GameEntry, message: string): void {
 
 async function startGame(game: GameEntry): Promise<void> {
   input.releaseAll();
+  void saveActiveAutosave();
+  stopAutosave();
   nativeEmulator.dispose();
   stopStartupAssist();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   runtimeControlsEnabled = false;
   runtimeControlsFinalizing = false;
+  runtimeAutosaveRestored = false;
   runtimePrepStatus = "pending";
   await unlockRuntimeAudio();
   await requestWakeLock();
@@ -634,11 +677,7 @@ async function finalizeRuntimeControls(): Promise<void> {
 }
 
 async function prepareRuntimeControls(game: GameEntry): Promise<boolean> {
-  if (game.id !== "ponpoko") {
-    return true;
-  }
-
-  const inputReady = await waitForPonpokoInputReady(10_000);
+  const inputReady = await waitForRuntimeInputReady(10_000);
   if (!inputReady) {
     return false;
   }
@@ -646,7 +685,19 @@ async function prepareRuntimeControls(game: GameEntry): Promise<boolean> {
 
   await acknowledgeMameCopyrightWarning();
   runtimePrepStatus = "warning-ack";
-  const stateReloaded = await reloadPonpokoStartState();
+
+  const autosaveRestored = await restoreAutosaveState(game);
+  if (autosaveRestored) {
+    runtimeAutosaveRestored = true;
+    runtimePrepStatus = "state-reloaded";
+    return true;
+  }
+
+  if (game.id !== "ponpoko") {
+    return true;
+  }
+
+  const stateReloaded = await reloadConfiguredStartState();
   if (!stateReloaded) {
     return false;
   }
@@ -655,7 +706,7 @@ async function prepareRuntimeControls(game: GameEntry): Promise<boolean> {
   return true;
 }
 
-async function waitForPonpokoInputReady(timeoutMs: number): Promise<boolean> {
+async function waitForRuntimeInputReady(timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -675,7 +726,21 @@ async function acknowledgeMameCopyrightWarning(): Promise<void> {
   input.releaseAll();
 }
 
-async function reloadPonpokoStartState(): Promise<boolean> {
+async function restoreAutosaveState(game: GameEntry): Promise<boolean> {
+  const autosave = await loadAutosaveState(game.id);
+  if (!autosave) {
+    return false;
+  }
+
+  const restored = await nativeEmulator.loadState(autosave.state);
+  if (restored) {
+    await waitForDelay(150);
+  }
+
+  return restored;
+}
+
+async function reloadConfiguredStartState(): Promise<boolean> {
   const reloaded = await nativeEmulator.reloadConfiguredState();
   await waitForDelay(150);
   return reloaded;
@@ -700,7 +765,10 @@ function enableRuntimeControls(): void {
     status.textContent = "플레이 중";
   }
   if (state.name === "game") {
-    startStartupAssist(state.game);
+    if (!runtimeAutosaveRestored) {
+      startStartupAssist(state.game);
+    }
+    startAutosave(state.game);
   }
 }
 
@@ -928,6 +996,40 @@ function stopStartupAssist(): void {
   }
 }
 
+function startAutosave(game: GameEntry): void {
+  stopAutosave();
+  void saveActiveAutosave(game);
+  autosaveTimer = window.setInterval(() => {
+    void saveActiveAutosave(game);
+  }, AUTOSAVE_INTERVAL_MS);
+}
+
+function stopAutosave(): void {
+  if (autosaveTimer !== null) {
+    window.clearInterval(autosaveTimer);
+    autosaveTimer = null;
+  }
+}
+
+async function saveActiveAutosave(expectedGame?: GameEntry): Promise<boolean> {
+  if (autosaveInFlight || state.name !== "game") {
+    return false;
+  }
+
+  const game = state.game;
+  if (expectedGame && expectedGame.id !== game.id) {
+    return false;
+  }
+
+  autosaveInFlight = true;
+  try {
+    const stateBytes = await nativeEmulator.saveState();
+    return stateBytes ? await saveAutosaveState(game.id, stateBytes) : false;
+  } finally {
+    autosaveInFlight = false;
+  }
+}
+
 async function requestWakeLock(): Promise<void> {
   const maybeNavigator = navigator as Navigator & {
     wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinel> };
@@ -947,12 +1049,15 @@ function releaseWakeLock(): void {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    void saveActiveAutosave();
     input.releaseAll();
   }
 });
 
 window.addEventListener("pagehide", () => {
+  void saveActiveAutosave();
   input.releaseAll();
+  stopAutosave();
   nativeEmulator.dispose();
   stopStartupAssist();
   stopBootProgressMonitor();

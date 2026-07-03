@@ -47,6 +47,8 @@ export interface NativeEmulator {
   start(): Promise<void>;
   pause(): void;
   reset(): void;
+  saveState(): Promise<Uint8Array | null>;
+  loadState(state: Uint8Array): Promise<boolean>;
   press(input: EmulatorInput): void;
   release(input: EmulatorInput): void;
   dispose(): void;
@@ -112,6 +114,14 @@ export class FakeNativeEmulator implements NativeEmulator {
   reset(): void {
     this.calls.push({ method: "reset" });
     this.releaseActiveInputs();
+  }
+
+  async saveState(): Promise<Uint8Array | null> {
+    return null;
+  }
+
+  async loadState(_state: Uint8Array): Promise<boolean> {
+    return false;
   }
 
   press(input: EmulatorInput): void {

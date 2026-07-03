@@ -103,7 +103,7 @@ async function verifyGame(browser, game) {
       await intro.click();
     }
     await page.locator(`[data-game-id="${game.id}"]`).click();
-    await page.getByText(game.title).waitFor({ timeout: 5_000 });
+    await page.locator(".game-topbar strong").getByText(game.title).waitFor({ timeout: 5_000 });
     await page.locator("canvas").first().waitFor({ timeout: 90_000 });
     await page.waitForFunction((minFrame) => {
       return (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= minFrame;

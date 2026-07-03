@@ -122,6 +122,16 @@ class RecordingRuntime implements NativeRuntimeAdapter {
     this.calls.push("reset");
   }
 
+  async saveState(): Promise<Uint8Array | null> {
+    this.calls.push("saveState");
+    return null;
+  }
+
+  async loadState(_state: Uint8Array): Promise<boolean> {
+    this.calls.push("loadState");
+    return false;
+  }
+
   press(input: EmulatorInput): void {
     this.calls.push(`press:${input}`);
     this.activeInputs.add(input);

@@ -510,13 +510,19 @@ try {
   await page.keyboard.down("ArrowLeft");
   await page.waitForTimeout(180);
   await page.keyboard.up("ArrowLeft");
-  await page.keyboard.down("KeyQ");
+  await page.keyboard.down("KeyZ");
   await page.waitForTimeout(120);
-  await page.keyboard.up("KeyQ");
-  await page.waitForTimeout(250);
+  await page.keyboard.up("KeyZ");
+  await page.keyboard.press("Digit5");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("KeyO");
+  await page.waitForTimeout(450);
   const keyboardInputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
   assertInputPair(keyboardInputCalls, 6, "keyboard left");
   assertInputPair(keyboardInputCalls, 0, "keyboard jump");
+  assertInputPair(keyboardInputCalls, 2, "keyboard coin");
+  assertInputPair(keyboardInputCalls, 3, "keyboard play");
+  assertInputPair(keyboardInputCalls, 7, "keyboard OK");
   const frameAfterKeyboard = await page.evaluate(() => window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0);
   if (frameAfterKeyboard <= frameBeforeKeyboard) {
     throw new Error(`Gameplay frames stopped during keyboard input: before=${frameBeforeKeyboard} after=${frameAfterKeyboard}`);

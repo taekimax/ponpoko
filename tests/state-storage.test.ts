@@ -1,0 +1,112 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { loadAutosaveState, saveAutosaveState } from "../src/state-storage";
+
+describe("autosave state storage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("saves and loads the latest state bytes for a game", async () => {
+    vi.stubGlobal("indexedDB", createFakeIndexedDb());
+
+    const state = new Uint8Array([1, 2, 3, 4]);
+    await expect(saveAutosaveState("bublbobl1", state, 1234)).resolves.toBe(true);
+    state[0] = 9;
+
+    await expect(loadAutosaveState("bublbobl1")).resolves.toEqual({
+      gameId: "bublbobl1",
+      savedAt: 1234,
+      state: new Uint8Array([1, 2, 3, 4]),
+      version: 1
+    });
+    await expect(loadAutosaveState("spangj")).resolves.toBeNull();
+  });
+
+  it("fails closed when IndexedDB is unavailable", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+
+    await expect(saveAutosaveState("ponpoko", new Uint8Array([1]))).resolves.toBe(false);
+    await expect(loadAutosaveState("ponpoko")).resolves.toBeNull();
+  });
+});
+
+function createFakeIndexedDb(): IDBFactory {
+  const stores = new Map<string, Map<string, unknown>>();
+  let upgraded = false;
+
+  return {
+    open: () => {
+      const database = createFakeDatabase(stores);
+      const request = createPendingOpenRequest(database);
+
+      setTimeout(() => {
+        if (!upgraded) {
+          upgraded = true;
+          request.onupgradeneeded?.(new Event("upgradeneeded") as IDBVersionChangeEvent);
+        }
+        request.onsuccess?.(new Event("success"));
+      }, 0);
+
+      return request;
+    }
+  } as unknown as IDBFactory;
+}
+
+function createFakeDatabase(stores: Map<string, Map<string, unknown>>): IDBDatabase {
+  return {
+    close: vi.fn(),
+    createObjectStore: (name: string) => {
+      stores.set(name, new Map());
+      return {} as IDBObjectStore;
+    },
+    objectStoreNames: {
+      contains: (name: string) => stores.has(name)
+    },
+    transaction: (name: string) => createFakeTransaction(stores, name)
+  } as unknown as IDBDatabase;
+}
+
+function createFakeTransaction(stores: Map<string, Map<string, unknown>>, name: string): IDBTransaction {
+  const store = stores.get(name) ?? new Map<string, unknown>();
+  stores.set(name, store);
+  const transaction = {
+    error: null,
+    objectStore: () => ({
+      get: (key: string) => {
+        const request = createPendingRequest(store.get(key));
+        setTimeout(() => {
+          request.onsuccess?.(new Event("success"));
+          setTimeout(() => transaction.oncomplete?.(new Event("complete")), 0);
+        }, 0);
+        return request;
+      },
+      put: (record: { gameId: string }) => {
+        store.set(record.gameId, record);
+        setTimeout(() => transaction.oncomplete?.(new Event("complete")), 0);
+        return createPendingRequest(record);
+      }
+    }),
+    onabort: null,
+    oncomplete: null,
+    onerror: null
+  } as unknown as IDBTransaction;
+
+  return transaction;
+}
+
+function createPendingRequest<T>(result: T): IDBRequest<T> {
+  return {
+    error: null,
+    result,
+    onerror: null,
+    onsuccess: null
+  } as unknown as IDBRequest<T>;
+}
+
+function createPendingOpenRequest(result: IDBDatabase): IDBOpenDBRequest {
+  return {
+    ...createPendingRequest(result),
+    onblocked: null,
+    onupgradeneeded: null
+  } as unknown as IDBOpenDBRequest;
+}

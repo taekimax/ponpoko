@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { SUPER_PANG_GAME } from "../src/games/super-pang";
 import { SHARED_EMULATOR_CONFIG } from "../src/games/shared";
 
-describe("Super Pang game configuration", () => {
-  it("uses the Super Pang ROM, thumbnail, and controller profile", () => {
+describe("Pang game configuration", () => {
+  it("uses the runnable Pang ROM, thumbnail, and controller profile", () => {
     expect(SUPER_PANG_GAME).toMatchObject({
-      id: "spangj",
-      romFile: "spangj.zip",
+      id: "pang",
+      romFile: "pang.zip",
       thumbnailFile: "pang.jpg",
       controllerProfile: "puzzleShoot"
     });

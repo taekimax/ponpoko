@@ -11,8 +11,8 @@ describe("external ROM server paths", () => {
     expect(resolveExternalRomPath("/ponpoko/roms/ponpoko.zip")).toBe(
       path.join(EXTERNAL_ROM_DIR, "ponpoko.zip")
     );
-    expect(resolveExternalRomPath("/ponpoko/roms/spangj.zip?cache=1", "/tmp/roms")).toBe(
-      path.join("/tmp/roms", "spangj.zip")
+    expect(resolveExternalRomPath("/ponpoko/roms/pbobble.zip?cache=1", "/tmp/roms")).toBe(
+      path.join("/tmp/roms", "pbobble.zip")
     );
   });
 

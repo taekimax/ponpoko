@@ -107,7 +107,7 @@ function renderMenu(showIntro: boolean): void {
       <section class="menu-header">
         <p class="eyebrow">iPhone Safari Arcade</p>
         <h1>폰포코 아케이드</h1>
-        <p>폰포코, 보글보글, 슈퍼 팡을 iPhone Safari 세로 화면에서 실행합니다.</p>
+        <p>폰포코, 퍼즐 보블, 팡을 iPhone Safari 세로 화면에서 실행합니다.</p>
       </section>
       <section class="game-list" aria-label="게임 선택">
         ${CATALOG.map((game) => renderGameCard(game)).join("")}

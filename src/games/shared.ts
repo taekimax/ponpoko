@@ -5,7 +5,7 @@ export type ControllerProfileId =
   | "platformFire"
   | "puzzleShoot";
 
-export type GameId = "ponpoko" | "bublbobl1" | "spangj";
+export type GameId = "ponpoko" | "pbobble" | "pang" | "bublbobl1";
 
 export interface EmulatorJsGameConfig {
   defaultOptions: Record<string, string>;

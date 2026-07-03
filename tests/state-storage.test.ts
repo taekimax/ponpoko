@@ -10,16 +10,16 @@ describe("autosave state storage", () => {
     vi.stubGlobal("indexedDB", createFakeIndexedDb());
 
     const state = new Uint8Array([1, 2, 3, 4]);
-    await expect(saveAutosaveState("bublbobl1", state, 1234)).resolves.toBe(true);
+    await expect(saveAutosaveState("pbobble", state, 1234)).resolves.toBe(true);
     state[0] = 9;
 
-    await expect(loadAutosaveState("bublbobl1")).resolves.toEqual({
-      gameId: "bublbobl1",
+    await expect(loadAutosaveState("pbobble")).resolves.toEqual({
+      gameId: "pbobble",
       savedAt: 1234,
       state: new Uint8Array([1, 2, 3, 4]),
       version: 1
     });
-    await expect(loadAutosaveState("spangj")).resolves.toBeNull();
+    await expect(loadAutosaveState("pang")).resolves.toBeNull();
   });
 
   it("fails closed when IndexedDB is unavailable", async () => {

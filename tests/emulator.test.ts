@@ -103,7 +103,7 @@ describe("EmulatorJS startup configuration", () => {
     const stubWindow = {};
     vi.stubGlobal("window", stubWindow);
 
-    configureEmulator(CATALOG[1], "roms/bublbobl1.zip", vi.fn());
+    configureEmulator(CATALOG[1], "roms/pbobble.zip", vi.fn());
 
     expect("EJS_loadStateURL" in stubWindow).toBe(false);
     vi.unstubAllGlobals();
@@ -144,7 +144,7 @@ describe("EmulatorJS startup configuration", () => {
     const stubWindow = {};
     vi.stubGlobal("window", stubWindow);
 
-    configureEmulator(CATALOG[1], "roms/bublbobl1.zip", vi.fn());
+    configureEmulator(CATALOG[1], "roms/pbobble.zip", vi.fn());
 
     expect(stubWindow).toMatchObject({
       EJS_defaultControls: {

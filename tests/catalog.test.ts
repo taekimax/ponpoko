@@ -7,15 +7,15 @@ describe("static game catalog", () => {
     expect(CATALOG).toHaveLength(3);
     expect(CATALOG.map((game) => game.romFile)).toEqual([
       "ponpoko.zip",
-      "bublbobl1.zip",
-      "spangj.zip"
+      "pbobble.zip",
+      "pang.zip"
     ]);
   });
 
   it("uses the expected local ROM identifiers", () => {
     const ids = CATALOG.map((game) => game.id);
 
-    expect(ids).toEqual(["ponpoko", "bublbobl1", "spangj"]);
+    expect(ids).toEqual(["ponpoko", "pbobble", "pang"]);
   });
 
   it("maps every game to the Safari-compatible MAME core and a static same-origin ROM URL", () => {
@@ -30,8 +30,8 @@ describe("static game catalog", () => {
     expect(resolveRomPath("https://assets.example.com/arcade-roms", "ponpoko.zip")).toBe(
       "https://assets.example.com/arcade-roms/ponpoko.zip"
     );
-    expect(resolveRomPath("https://assets.example.com/arcade-roms/", "spangj.zip")).toBe(
-      "https://assets.example.com/arcade-roms/spangj.zip"
+    expect(resolveRomPath("https://assets.example.com/arcade-roms/", "pbobble.zip")).toBe(
+      "https://assets.example.com/arcade-roms/pbobble.zip"
     );
     expect(resolveRomPath("", "ponpoko.zip")).toBe("/ponpoko/roms/ponpoko.zip");
   });

@@ -31,24 +31,24 @@ describe("controller profiles", () => {
     expect(profile.hint).toBe("좌/우 홀드 · 가운데 점프 · 위/아래 스와이프");
   });
 
-  it("uses dedicated action buttons for Bubble Bobble and Super Pang", () => {
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "bublbobl1")!).buttons.map((button) => button.label)).toEqual([
-      "점프",
-      "공격"
+  it("uses dedicated action buttons for Puzzle Bobble and Pang", () => {
+    expect(getControllerProfile(CATALOG.find((game) => game.id === "pbobble")!).buttons.map((button) => button.label)).toEqual([
+      "발사",
+      "와이어"
     ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "spangj")!).buttons.map((button) => button.label)).toEqual([
+    expect(getControllerProfile(CATALOG.find((game) => game.id === "pang")!).buttons.map((button) => button.label)).toEqual([
       "발사",
       "와이어"
     ]);
   });
 
   it("shows desktop keyboard hints with assigned arcade service keys", () => {
-    const bubbleProfile = getControllerProfile(CATALOG.find((game) => game.id === "bublbobl1")!);
+    const puzzleProfile = getControllerProfile(CATALOG.find((game) => game.id === "pbobble")!);
 
-    expect(getKeyboardControlHints(bubbleProfile)).toEqual([
+    expect(getKeyboardControlHints(puzzleProfile)).toEqual([
       { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
-      { id: "button-jump", keys: ["Space", "Z"], label: "점프" },
-      { id: "button-attack", keys: ["X"], label: "공격" },
+      { id: "button-fire", keys: ["Space", "Z"], label: "발사" },
+      { id: "button-wire", keys: ["X"], label: "와이어" },
       { id: "coin", keys: ["5"], label: "동전" },
       { id: "ok", keys: ["O"], label: "OK" },
       { id: "play", keys: ["Enter", "P"], label: "플레이" }

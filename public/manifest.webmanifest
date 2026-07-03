@@ -1,0 +1,10 @@
+{
+  "name": "폰포코 아케이드",
+  "short_name": "폰포코",
+  "start_url": "/ponpoko/",
+  "scope": "/ponpoko/",
+  "display": "standalone",
+  "background_color": "#0e0e0e",
+  "theme_color": "#111111",
+  "description": "iPhone Safari arcade launcher for Ponpoko and classic arcade games."
+}

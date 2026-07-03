@@ -3,9 +3,19 @@ import type { ControlAction } from "../controllers";
 export type ControllerProfileId =
   | "platformJump"
   | "platformFire"
-  | "puzzleShoot";
+  | "puzzleShoot"
+  | "arcadeThreeButton"
+  | "arcadeSixButton";
 
-export type GameId = "ponpoko" | "pbobble" | "pang" | "bublbobl1";
+export type GameId =
+  | "ponpoko"
+  | "pbobble"
+  | "spang"
+  | "bublbobl1"
+  | "mslug"
+  | "nss_smw"
+  | "sf2ce"
+  | "wofj_korean_v1_20";
 
 export interface EmulatorJsGameConfig {
   defaultOptions: Record<string, string>;
@@ -26,6 +36,7 @@ export interface GameEntry {
   core: "mame2003_plus";
   rotation: 0;
   romFile: string;
+  romVersion: string;
   thumbnailFile: string;
   sourcePageUrl: string;
   controllerProfile: ControllerProfileId;

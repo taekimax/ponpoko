@@ -149,11 +149,11 @@ describe("EmulatorJS startup configuration", () => {
     expect(stubWindow).toMatchObject({
       EJS_defaultControls: {
         0: expect.objectContaining({
-          0: { value: "z", value2: "BUTTON_1" },
-          1: { value: "x", value2: "BUTTON_2" },
+          0: { value: "q", value2: "BUTTON_1" },
+          1: { value: "w", value2: "BUTTON_2" },
           2: { value: "5", value2: "SELECT" },
           3: { value: "enter", value2: "START" },
-          8: { value: "c", value2: "BUTTON_3" },
+          8: { value: "e", value2: "BUTTON_3" },
           9: { value: "a", value2: "BUTTON_4" },
           10: { value: "s", value2: "BUTTON_5" },
           11: { value: "d", value2: "BUTTON_6" }
@@ -237,14 +237,19 @@ describe("EmulatorJS startup configuration", () => {
 
   it("captures and restores EmulatorJS runtime states through the game manager", async () => {
     const state = new Uint8Array([1, 2, 3]);
-    const getState = vi.fn(() => state);
-    const loadState = vi.fn();
+    const gameManager = {
+      loadedState: null as Uint8Array | null,
+      state,
+      getState: vi.fn(function (this: { state: Uint8Array }) {
+        return this.state;
+      }),
+      loadState: vi.fn(function (this: { loadedState: Uint8Array | null }, nextState: Uint8Array) {
+        this.loadedState = nextState;
+      })
+    };
     vi.stubGlobal("window", {
       EJS_emulator: {
-        gameManager: {
-          getState,
-          loadState
-        }
+        gameManager
       }
     });
 
@@ -254,7 +259,8 @@ describe("EmulatorJS startup configuration", () => {
 
     expect(savedState).toEqual(new Uint8Array([1, 2, 3]));
     await expect(emulator.loadState(new Uint8Array([4, 5, 6]))).resolves.toBe(true);
-    expect(loadState).toHaveBeenCalledWith(new Uint8Array([4, 5, 6]));
+    expect(gameManager.loadState).toHaveBeenCalledWith(new Uint8Array([4, 5, 6]));
+    expect(gameManager.loadedState).toEqual(new Uint8Array([4, 5, 6]));
     vi.unstubAllGlobals();
   });
 });

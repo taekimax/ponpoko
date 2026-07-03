@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAutosaveState, saveAutosaveState } from "../src/state-storage";
+import {
+  loadAutosaveState,
+  loadManualState,
+  saveAutosaveState,
+  saveManualState
+} from "../src/state-storage";
 
 describe("autosave state storage", () => {
   afterEach(() => {
@@ -19,14 +24,36 @@ describe("autosave state storage", () => {
       state: new Uint8Array([1, 2, 3, 4]),
       version: 1
     });
-    await expect(loadAutosaveState("pang")).resolves.toBeNull();
+    await expect(loadAutosaveState("spang")).resolves.toBeNull();
+  });
+
+  it("keeps the user save slot separate from autosave continuity", async () => {
+    vi.stubGlobal("indexedDB", createFakeIndexedDb());
+
+    await expect(saveManualState("ponpoko", new Uint8Array([7, 8, 9]), 2000)).resolves.toBe(true);
+    await expect(saveAutosaveState("ponpoko", new Uint8Array([1, 2, 3]), 3000)).resolves.toBe(true);
+
+    await expect(loadManualState("ponpoko")).resolves.toEqual({
+      gameId: "ponpoko",
+      savedAt: 2000,
+      state: new Uint8Array([7, 8, 9]),
+      version: 1
+    });
+    await expect(loadAutosaveState("ponpoko")).resolves.toEqual({
+      gameId: "ponpoko",
+      savedAt: 3000,
+      state: new Uint8Array([1, 2, 3]),
+      version: 1
+    });
   });
 
   it("fails closed when IndexedDB is unavailable", async () => {
     vi.stubGlobal("indexedDB", undefined);
 
     await expect(saveAutosaveState("ponpoko", new Uint8Array([1]))).resolves.toBe(false);
+    await expect(saveManualState("ponpoko", new Uint8Array([1]))).resolves.toBe(false);
     await expect(loadAutosaveState("ponpoko")).resolves.toBeNull();
+    await expect(loadManualState("ponpoko")).resolves.toBeNull();
   });
 });
 
@@ -82,8 +109,12 @@ function createFakeTransaction(stores: Map<string, Map<string, unknown>>, name: 
       },
       put: (record: { gameId: string }) => {
         store.set(record.gameId, record);
-        setTimeout(() => transaction.oncomplete?.(new Event("complete")), 0);
-        return createPendingRequest(record);
+        const request = createPendingRequest(record);
+        setTimeout(() => {
+          request.onsuccess?.(new Event("success"));
+          setTimeout(() => transaction.oncomplete?.(new Event("complete")), 0);
+        }, 0);
+        return request;
       }
     }),
     onabort: null,

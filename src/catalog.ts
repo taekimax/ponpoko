@@ -17,7 +17,7 @@ export const THUMB_BASE_PATH = "/ponpoko/thumbs/";
 export const CATALOG: GameEntry[] = [...GAME_CATALOG];
 
 export function getRomPath(game: GameEntry): string {
-  return resolveRomPath(ROM_BASE_PATH, game.romFile);
+  return resolveRomPath(ROM_BASE_PATH, game.romFile, game.romVersion);
 }
 
 export function getThumbnailPath(game: GameEntry): string {
@@ -28,8 +28,9 @@ export function findGame(gameId: string): GameEntry | undefined {
   return CATALOG.find((game) => game.id === gameId);
 }
 
-export function resolveRomPath(baseUrl: string | undefined, romFile: string): string {
-  return `${normalizeRomBaseUrl(baseUrl) ?? DEFAULT_ROM_BASE_PATH}${romFile}`;
+export function resolveRomPath(baseUrl: string | undefined, romFile: string, version?: string): string {
+  const resolved = `${normalizeRomBaseUrl(baseUrl) ?? DEFAULT_ROM_BASE_PATH}${romFile}`;
+  return version ? `${resolved}?v=${encodeURIComponent(version)}` : resolved;
 }
 
 function normalizeRomBaseUrl(baseUrl: string | undefined): string | null {

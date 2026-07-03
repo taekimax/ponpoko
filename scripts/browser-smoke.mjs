@@ -11,7 +11,10 @@ const baseUrl = configuredBaseUrl
 const appUrl = new URL("?bootDebug=1", baseUrl).href;
 const baseHost = new URL(baseUrl).hostname;
 const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
-const expectedRomUrl = new URL("ponpoko.zip", expectedRomBaseUrl).href;
+const expectedRomUrl = new URL(
+  "ponpoko.zip?v=8d77d65d7b0a8594a185e4d2c28aec91cf0cb0ff47ef56108e85e4a52f90024f",
+  expectedRomBaseUrl
+).href;
 const expectedEmulatorBaseUrl = new URL("emulatorjs/", baseUrl).href;
 const expectedStartStatePath = "/ponpoko/states/ponpoko-start.state?v=20260701";
 const expectedStartStateUrl = new URL(`states/ponpoko-start.state?v=20260701`, baseUrl).href;
@@ -97,7 +100,6 @@ try {
   if (loadingAnimationVisible > 0) {
     throw new Error("Loading screen should not render the top pixel-loader animation");
   }
-  await page.getByText("Safari를 닫지 말고 기다려 주세요.").waitFor({ timeout: 5_000 });
   await page.locator("[data-game-status]").getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
   await page.getByText("에뮬레이터 준비 중").waitFor({ timeout: 5_000 });
   await page.getByText(/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/).waitFor({ timeout: 5_000 });
@@ -259,6 +261,29 @@ try {
   if (/에뮬레이터 준비 중/.test(runtimeState.bodyText)) {
     throw new Error(`Emulator boot overlay did not clear after startup: ${runtimeState.bodyText}`);
   }
+
+  const saveButton = page.locator("[data-save-state]");
+  await saveButton.waitFor({ timeout: 5_000 });
+  const saveButtonState = await saveButton.evaluate((button) => ({
+    disabled: button.disabled,
+    text: button.textContent?.trim() ?? ""
+  }));
+  if (saveButtonState.disabled || !/저장/.test(saveButtonState.text)) {
+    throw new Error(`Manual save button is not ready after gameplay starts: ${JSON.stringify(saveButtonState)}`);
+  }
+  await saveButton.click();
+  await waitForGameStatus(page, "저장 완료");
+  const loadButton = page.locator("[data-load-state]");
+  await loadButton.waitFor({ timeout: 5_000 });
+  const loadButtonState = await loadButton.evaluate((button) => ({
+    disabled: button.disabled,
+    text: button.textContent?.trim() ?? ""
+  }));
+  if (loadButtonState.disabled || !/불러오기/.test(loadButtonState.text)) {
+    throw new Error(`Manual load button is not ready after saving: ${JSON.stringify(loadButtonState)}`);
+  }
+  await loadButton.click();
+  await waitForGameStatus(page, "불러오기 완료");
 
   const stageScreenshot = await page.locator(".game-stage").screenshot();
   if (hasMameCopyrightWarning(stageScreenshot)) {
@@ -510,9 +535,9 @@ try {
   await page.keyboard.down("ArrowLeft");
   await page.waitForTimeout(180);
   await page.keyboard.up("ArrowLeft");
-  await page.keyboard.down("KeyZ");
+  await page.keyboard.down("KeyQ");
   await page.waitForTimeout(120);
-  await page.keyboard.up("KeyZ");
+  await page.keyboard.up("KeyQ");
   await page.keyboard.press("Digit5");
   await page.keyboard.press("Enter");
   await page.keyboard.press("KeyO");
@@ -585,6 +610,12 @@ async function waitForServer(url) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`Preview server did not start at ${url}`);
+}
+
+async function waitForGameStatus(page, expectedStatus) {
+  await page.waitForFunction((status) => {
+    return document.querySelector("[data-game-status]")?.textContent === status;
+  }, expectedStatus, { timeout: 10_000 });
 }
 
 async function holdControl(page, action, durationMs) {

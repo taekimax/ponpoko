@@ -20,7 +20,7 @@ export async function downloadRomArrayBuffer(
   options: RomDownloadOptions = {}
 ): Promise<RomArrayBufferDownloadResult> {
   const fetcher = options.fetcher ?? fetch;
-  const response = await fetcher(url);
+  const response = await fetcher(url, { cache: "force-cache" });
 
   if (!response.ok) {
     throw new Error(`ROM을 다운로드하지 못했습니다. (${response.status})`);
@@ -38,7 +38,7 @@ export async function downloadRomArrayBuffer(
 
 export async function downloadRom(url: string, options: RomDownloadOptions = {}): Promise<RomDownloadResult> {
   const fetcher = options.fetcher ?? fetch;
-  const response = await fetcher(url);
+  const response = await fetcher(url, { cache: "force-cache" });
   let lastProgress = -1;
   const reportProgress = (percent: number) => {
     if (percent !== lastProgress) {

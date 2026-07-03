@@ -14,26 +14,70 @@ const games = [
     id: "pbobble",
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-zone][data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyZ", label: "fire", selector: '.control-button[data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyX", label: "wire", selector: '.control-button[data-action="wire"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '.control-button[data-action="fire"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '.control-button[data-action="wire"]' }
     ],
     minFrame: 120,
     romFile: "pbobble.zip",
+    romVersion: "b05467d9c827fc04fe4836aeaa1c93feb298ad195a5c6e6e8ae4550a7f432a3a",
     title: "퍼즐 보블",
     videoHeight: 224,
     videoWidth: 320
   },
   {
-    id: "pang",
+    id: "spang",
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-zone][data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyZ", label: "fire", selector: '.control-button[data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyX", label: "wire", selector: '.control-button[data-action="wire"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '.control-button[data-action="fire"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '.control-button[data-action="wire"]' }
     ],
     minFrame: 120,
-    romFile: "pang.zip",
-    title: "팡",
+    romFile: "spang.zip",
+    romVersion: "acd4dd9b95f6113fd61477824045f0478bf9469dfd41ff6465c4383966812e71",
+    title: "슈퍼 팡",
     videoHeight: 240,
+    videoWidth: 384
+  },
+  {
+    id: "mslug",
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+    ],
+    minFrame: 120,
+    romFile: "mslug.zip",
+    romVersion: "de703dd6573d84c42fa867ca09605b2ef5182d393f725ee41beadd9112574772",
+    title: "메탈 슬러그",
+    videoHeight: 224,
+    videoWidth: 304
+  },
+  {
+    id: "sf2ce",
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 11, keyboard: "KeyD", label: "button6", selector: '[data-touch-surface="virtual"] [data-action="button6"]' }
+    ],
+    minFrame: 120,
+    romFile: "sf2ce.zip",
+    romVersion: "82e5451619c1328e57987dd00be7ac5337361e60a0c48a9e69823ca7b59d15ad",
+    title: "스트리트 파이터 II CE",
+    videoHeight: 224,
+    videoWidth: 384
+  },
+  {
+    id: "wofj_korean_v1_20",
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+    ],
+    minFrame: 120,
+    romFile: "wofj.zip",
+    romVersion: "346984d6e6f2f54d11228ab82350e07b82577be0c3c995fd41e12ba40ae9e906",
+    title: "천지를 먹다 II 한국어",
+    videoHeight: 224,
     videoWidth: 384
   }
 ];
@@ -79,13 +123,13 @@ try {
     await Promise.all(targets.map((target) => target.browser.close()));
   }
 
-  console.log("game runtime smoke ok: Puzzle Bobble and Pang boot on desktop/mobile, render frames, and accept mapped inputs");
+  console.log("game runtime smoke ok: runnable catalog games boot on desktop/mobile, render frames, and accept mapped inputs; nss_smw is excluded until its NSS parent BIOS is available");
 } finally {
   server?.kill("SIGTERM");
 }
 
 async function verifyGame(target, game) {
-  const expectedRomUrl = new URL(game.romFile, expectedRomBaseUrl).href;
+  const expectedRomUrl = new URL(`${game.romFile}?v=${game.romVersion}`, expectedRomBaseUrl).href;
   const context = await target.browser.newContext(target.contextOptions);
   const page = await context.newPage();
 

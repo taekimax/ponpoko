@@ -11,6 +11,7 @@ export const PUZZLE_BOBBLE_GAME: GameEntry = {
   core: "mame2003_plus",
   rotation: 0,
   romFile: "pbobble.zip",
+  romVersion: "b05467d9c827fc04fe4836aeaa1c93feb298ad195a5c6e6e8ae4550a7f432a3a",
   thumbnailFile: "pbobble.jpg",
   sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=414",
   controllerProfile: "puzzleShoot",

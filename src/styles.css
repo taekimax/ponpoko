@@ -214,8 +214,8 @@ p {
 
 .game-topbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto;
+  gap: 6px;
   align-items: center;
 }
 
@@ -242,9 +242,11 @@ p {
 .icon-button,
 .coin-button,
 .ok-button,
-.start-button {
+.start-button,
+.save-button,
+.load-button {
   min-height: 40px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-radius: 8px;
   background: #2d2d2d;
   font-size: 13px;
@@ -253,7 +255,9 @@ p {
 
 .coin-button,
 .ok-button,
-.start-button {
+.start-button,
+.save-button,
+.load-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -292,6 +296,19 @@ p {
 
 .start-button {
   background: #e0524d;
+}
+
+.save-button {
+  background: #4f65d8;
+}
+
+.load-button {
+  background: #7c4fd8;
+}
+
+.save-button:disabled,
+.load-button:disabled {
+  opacity: 0.52;
 }
 
 .game-stage {
@@ -628,6 +645,178 @@ p {
   filter: brightness(1.12);
 }
 
+.virtual-arcade-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 clamp(14px, 4vw, 24px) clamp(12px, 3.5vw, 22px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.virtual-arcade-controls.is-enabled {
+  opacity: 1;
+}
+
+.virtual-stick {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(104px, 29vw, 124px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(246, 240, 223, 0.32);
+  border-radius: 50%;
+  background: rgba(246, 240, 223, 0.18);
+  box-shadow:
+    inset 0 0 28px rgba(0, 0, 0, 0.34),
+    0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.virtual-stick::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(246, 240, 223, 0.28);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.virtual-stick-button,
+.virtual-game-button {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.virtual-stick-button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 38%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(246, 240, 223, 0.3);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(246, 240, 223, 0.76);
+  pointer-events: auto;
+}
+
+.virtual-stick-button::before {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.stick-up {
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.stick-up::before {
+  content: "▲";
+}
+
+.stick-down {
+  bottom: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.stick-down::before {
+  content: "▼";
+}
+
+.stick-left {
+  top: 50%;
+  left: 5%;
+  transform: translateY(-50%);
+}
+
+.stick-left::before {
+  content: "◀";
+}
+
+.stick-right {
+  top: 50%;
+  right: 5%;
+  transform: translateY(-50%);
+}
+
+.stick-right::before {
+  content: "▶";
+}
+
+.virtual-game-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, clamp(42px, 12vw, 54px));
+  gap: 8px;
+  align-items: center;
+  justify-content: end;
+}
+
+.has-three-buttons .virtual-game-buttons {
+  grid-template-rows: repeat(1, clamp(42px, 12vw, 54px));
+}
+
+.has-six-buttons .virtual-game-buttons {
+  grid-template-rows: repeat(2, clamp(42px, 12vw, 54px));
+}
+
+.virtual-game-button {
+  display: grid;
+  place-items: center;
+  width: clamp(42px, 12vw, 54px);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(246, 240, 223, 0.3);
+  border-radius: 50%;
+  color: #f6f0df;
+  font-size: 13px;
+  font-weight: 900;
+  pointer-events: auto;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.24);
+}
+
+.virtual-game-button.tone-primary {
+  background: rgba(239, 200, 74, 0.78);
+  color: #111111;
+}
+
+.virtual-game-button.tone-secondary {
+  background: rgba(47, 156, 149, 0.78);
+}
+
+.virtual-game-button.tone-danger {
+  background: rgba(224, 82, 77, 0.78);
+}
+
+.virtual-stick-button:active,
+.virtual-game-button:active {
+  transform: translateY(1px);
+  filter: brightness(1.12);
+}
+
+.stick-up:active,
+.stick-down:active {
+  transform: translateX(-50%) translateY(1px);
+}
+
+.stick-left:active,
+.stick-right:active {
+  transform: translateY(calc(-50% + 1px));
+}
+
+.control-panel.has-virtual-stick {
+  min-height: 34px;
+}
+
 .action-buttons {
   display: flex;
   justify-content: center;
@@ -748,7 +937,8 @@ p {
   }
 
   .mobile-control-panel,
-  .touch-zones-stage {
+  .touch-zones-stage,
+  .virtual-arcade-controls {
     display: none;
   }
 

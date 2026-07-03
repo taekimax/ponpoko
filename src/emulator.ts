@@ -247,15 +247,15 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   };
   window.EJS_defaultControls = {
     0: {
-      0: { value: "z", value2: "BUTTON_1" },
-      1: { value: "x", value2: "BUTTON_2" },
+      0: { value: "q", value2: "BUTTON_1" },
+      1: { value: "w", value2: "BUTTON_2" },
       2: { value: "5", value2: "SELECT" },
       3: { value: "enter", value2: "START" },
       4: { value: "up arrow", value2: "DPAD_UP" },
       5: { value: "down arrow", value2: "DPAD_DOWN" },
       6: { value: "left arrow", value2: "DPAD_LEFT" },
       7: { value: "right arrow", value2: "DPAD_RIGHT" },
-      8: { value: "c", value2: "BUTTON_3" },
+      8: { value: "e", value2: "BUTTON_3" },
       9: { value: "a", value2: "BUTTON_4" },
       10: { value: "s", value2: "BUTTON_5" },
       11: { value: "d", value2: "BUTTON_6" }
@@ -640,13 +640,13 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   async saveState(): Promise<Uint8Array | null> {
-    const getState = this.getRuntime()?.gameManager?.getState;
-    if (!getState) {
+    const gameManager = this.getRuntime()?.gameManager;
+    if (!gameManager?.getState) {
       return null;
     }
 
     try {
-      const state = getState();
+      const state = gameManager.getState();
       return state.byteLength > 0 ? new Uint8Array(state) : null;
     } catch {
       return null;
@@ -654,13 +654,13 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   async loadState(state: Uint8Array): Promise<boolean> {
-    const loadState = this.getRuntime()?.gameManager?.loadState;
-    if (!loadState || state.byteLength === 0) {
+    const gameManager = this.getRuntime()?.gameManager;
+    if (!gameManager?.loadState || state.byteLength === 0) {
       return false;
     }
 
     try {
-      loadState(new Uint8Array(state));
+      gameManager.loadState(new Uint8Array(state));
       return true;
     } catch {
       return false;

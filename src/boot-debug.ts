@@ -36,7 +36,7 @@ export interface BootDebugState {
   touchZones: {
     count: number;
     enabled: boolean;
-    surface: "bottom" | "none" | "stage";
+    surface: "bottom" | "none" | "stage" | "virtual";
     visible: boolean;
   };
   touchLog: BootDebugTouch[];

@@ -87,7 +87,7 @@ try {
     layout.mobilePanelVisible ||
     layout.stageTouchZonesVisible ||
     !/이동/.test(layout.keyboardText) ||
-    !/Space/.test(layout.keyboardText) ||
+    !/Q/.test(layout.keyboardText) ||
     !/동전/.test(layout.keyboardText) ||
     !/OK/.test(layout.keyboardText) ||
     !/Enter/.test(layout.keyboardText) ||

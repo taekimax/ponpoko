@@ -1,5 +1,9 @@
 export const CATALOG_ROMS = [
   "ponpoko.zip",
   "pbobble.zip",
-  "pang.zip"
+  "spang.zip",
+  "mslug.zip",
+  "nss_smw.zip",
+  "sf2ce.zip",
+  "wofj.zip"
 ];

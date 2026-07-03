@@ -16,8 +16,9 @@ describe("InputRouter", () => {
       ["ArrowDown", "ArrowDown", "down"],
       ["Space", " ", "action1"],
       ["KeyZ", "z", "action1"],
-      ["KeyX", "x", "action2"],
-      ["KeyC", "c", "action3"],
+      ["KeyQ", "q", "action1"],
+      ["KeyW", "w", "action2"],
+      ["KeyE", "e", "action3"],
       ["KeyA", "a", "action4"],
       ["KeyS", "s", "action5"],
       ["KeyD", "d", "action6"],
@@ -86,8 +87,8 @@ describe("InputRouter", () => {
 
     router.pressControl("jump");
     router.releaseControl("jump");
-    target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z"));
-    target.dispatchEvent(keyboardEvent("keyup", "KeyZ", "z"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyQ", "q"));
 
     expect(emulator.inputCalls).toEqual([
       { input: "action1", type: "press" },

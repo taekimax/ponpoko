@@ -1,8 +1,9 @@
 import type { GameId } from "./catalog";
 
 const AUTOSAVE_DB_NAME = "arcade-safari";
-const AUTOSAVE_DB_VERSION = 1;
+const AUTOSAVE_DB_VERSION = 3;
 const AUTOSAVE_STORE_NAME = "autosaves";
+const MANUAL_STORE_NAME = "manual-states";
 const AUTOSAVE_RECORD_VERSION = 1;
 
 export interface AutosaveRecord {
@@ -12,10 +13,37 @@ export interface AutosaveRecord {
   version: number;
 }
 
+export type ManualStateRecord = AutosaveRecord;
+
 export async function saveAutosaveState(
   gameId: GameId,
   state: Uint8Array,
   savedAt = Date.now()
+): Promise<boolean> {
+  return saveStateRecord(AUTOSAVE_STORE_NAME, gameId, state, savedAt);
+}
+
+export async function loadAutosaveState(gameId: GameId): Promise<AutosaveRecord | null> {
+  return loadStateRecord(AUTOSAVE_STORE_NAME, gameId);
+}
+
+export async function saveManualState(
+  gameId: GameId,
+  state: Uint8Array,
+  savedAt = Date.now()
+): Promise<boolean> {
+  return saveStateRecord(MANUAL_STORE_NAME, gameId, state, savedAt);
+}
+
+export async function loadManualState(gameId: GameId): Promise<ManualStateRecord | null> {
+  return loadStateRecord(MANUAL_STORE_NAME, gameId);
+}
+
+async function saveStateRecord(
+  storeName: string,
+  gameId: GameId,
+  state: Uint8Array,
+  savedAt: number
 ): Promise<boolean> {
   if (state.byteLength === 0 || typeof indexedDB === "undefined") {
     return false;
@@ -24,14 +52,16 @@ export async function saveAutosaveState(
   let database: IDBDatabase | null = null;
   try {
     database = await openAutosaveDatabase();
-    const transaction = database.transaction(AUTOSAVE_STORE_NAME, "readwrite");
-    transaction.objectStore(AUTOSAVE_STORE_NAME).put({
+    const transaction = database.transaction(storeName, "readwrite");
+    const completed = waitForTransaction(transaction);
+    const request = transaction.objectStore(storeName).put({
       gameId,
       savedAt,
       state: new Uint8Array(state),
       version: AUTOSAVE_RECORD_VERSION
     } satisfies AutosaveRecord);
-    await waitForTransaction(transaction);
+    await waitForRequest(request);
+    await completed;
     return true;
   } catch {
     return false;
@@ -40,7 +70,7 @@ export async function saveAutosaveState(
   }
 }
 
-export async function loadAutosaveState(gameId: GameId): Promise<AutosaveRecord | null> {
+async function loadStateRecord(storeName: string, gameId: GameId): Promise<AutosaveRecord | null> {
   if (typeof indexedDB === "undefined") {
     return null;
   }
@@ -48,10 +78,11 @@ export async function loadAutosaveState(gameId: GameId): Promise<AutosaveRecord 
   let database: IDBDatabase | null = null;
   try {
     database = await openAutosaveDatabase();
-    const transaction = database.transaction(AUTOSAVE_STORE_NAME, "readonly");
-    const request = transaction.objectStore(AUTOSAVE_STORE_NAME).get(gameId);
+    const transaction = database.transaction(storeName, "readonly");
+    const completed = waitForTransaction(transaction);
+    const request = transaction.objectStore(storeName).get(gameId);
     const record = await waitForRequest<AutosaveRecord | undefined>(request);
-    await waitForTransaction(transaction);
+    await completed;
     const state = normalizeStateBytes(record?.state);
 
     return record && state
@@ -77,6 +108,9 @@ function openAutosaveDatabase(): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains(AUTOSAVE_STORE_NAME)) {
         database.createObjectStore(AUTOSAVE_STORE_NAME, { keyPath: "gameId" });
+      }
+      if (!database.objectStoreNames.contains(MANUAL_STORE_NAME)) {
+        database.createObjectStore(MANUAL_STORE_NAME, { keyPath: "gameId" });
       }
     };
     request.onsuccess = () => resolve(request.result);

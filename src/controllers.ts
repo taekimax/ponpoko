@@ -13,6 +13,12 @@ export type ControlAction =
   | "fastDrop"
   | "fire"
   | "wire"
+  | "button1"
+  | "button2"
+  | "button3"
+  | "button4"
+  | "button5"
+  | "button6"
   | "ok"
   | "back"
   | "start"
@@ -41,7 +47,7 @@ export interface ControllerProfile {
   id: ControllerProfileId;
   label: string;
   hint: string;
-  zonePlacement: "stage" | "bottom";
+  zonePlacement: "stage" | "bottom" | "virtualStick";
   zones: ControlZone[];
   buttons: ControlButton[];
   swipe?: SwipeControls;
@@ -98,6 +104,43 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { id: "button-fire", label: "발사", action: "fire", tone: "primary" },
       { id: "button-wire", label: "와이어", action: "wire", tone: "secondary" }
     ]
+  },
+  arcadeThreeButton: {
+    id: "arcadeThreeButton",
+    label: "가상 스틱 + 3버튼",
+    hint: "왼쪽 스틱 이동 · 오른쪽 버튼 3개",
+    zonePlacement: "virtualStick",
+    zones: [
+      { id: "stick-up", label: "위", action: "up", area: "up" },
+      { id: "stick-down", label: "아래", action: "down", area: "down" },
+      { id: "stick-left", label: "왼쪽", action: "left", area: "left" },
+      { id: "stick-right", label: "오른쪽", action: "right", area: "right" }
+    ],
+    buttons: [
+      { id: "button-1", label: "A", action: "button1", tone: "primary" },
+      { id: "button-2", label: "B", action: "button2", tone: "secondary" },
+      { id: "button-3", label: "C", action: "button3", tone: "danger" }
+    ]
+  },
+  arcadeSixButton: {
+    id: "arcadeSixButton",
+    label: "가상 스틱 + 6버튼",
+    hint: "왼쪽 스틱 이동 · 오른쪽 버튼 6개",
+    zonePlacement: "virtualStick",
+    zones: [
+      { id: "stick-up", label: "위", action: "up", area: "up" },
+      { id: "stick-down", label: "아래", action: "down", area: "down" },
+      { id: "stick-left", label: "왼쪽", action: "left", area: "left" },
+      { id: "stick-right", label: "오른쪽", action: "right", area: "right" }
+    ],
+    buttons: [
+      { id: "button-1", label: "LP", action: "button1", tone: "primary" },
+      { id: "button-2", label: "MP", action: "button2", tone: "secondary" },
+      { id: "button-3", label: "HP", action: "button3", tone: "danger" },
+      { id: "button-4", label: "LK", action: "button4", tone: "primary" },
+      { id: "button-5", label: "MK", action: "button5", tone: "secondary" },
+      { id: "button-6", label: "HK", action: "button6", tone: "danger" }
+    ]
   }
 };
 
@@ -146,13 +189,29 @@ function getKeyboardActionHints(profile: ControllerProfile): KeyboardControlHint
 }
 
 function getKeyboardActionKeys(action: ControlAction): string[] {
-  if (action === "attack" || action === "wire") {
-    return ["X"];
+  if (action === "button1" || action === "fire" || action === "jump" || action === "action" || action === "rotate") {
+    return ["Q"];
   }
 
-  if (action === "special") {
-    return ["C"];
+  if (action === "button2" || action === "attack" || action === "wire") {
+    return ["W"];
   }
 
-  return ["Space", "Z"];
+  if (action === "button3" || action === "special") {
+    return ["E"];
+  }
+
+  if (action === "button4") {
+    return ["A"];
+  }
+
+  if (action === "button5") {
+    return ["S"];
+  }
+
+  if (action === "button6") {
+    return ["D"];
+  }
+
+  return ["Q"];
 }

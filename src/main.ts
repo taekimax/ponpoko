@@ -23,8 +23,14 @@ import { createNativeEmulator } from "./emulator";
 import { InputRouter } from "./input";
 import { downloadRomArrayBuffer } from "./rom-download";
 import { shouldEnableControlsAfterPrepFailure } from "./runtime-prep";
+import { registerServiceWorker } from "./service-worker-registration";
 import { getStartupAssistSequence } from "./startup-assist";
-import { loadAutosaveState, saveAutosaveState } from "./state-storage";
+import {
+  loadAutosaveState,
+  loadManualState,
+  saveAutosaveState,
+  saveManualState
+} from "./state-storage";
 import "./styles.css";
 
 type ViewState =
@@ -49,6 +55,8 @@ const POINTER_PREFIX = "pointer:";
 let state: ViewState = { name: "menu", intro: true };
 let autosaveTimer: number | null = null;
 let autosaveInFlight = false;
+let manualStateInFlight = false;
+let manualStateStatusTimer: number | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 let startupAssistTimer: number | null = null;
 let emulatorChromeObserver: MutationObserver | null = null;
@@ -62,6 +70,7 @@ let runtimePrepStatus: BootDebugRuntimePrep = "pending";
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
 
 input.attachKeyboard(window);
+registerServiceWorker();
 render();
 
 function getRequiredAppRoot(): HTMLDivElement {
@@ -101,13 +110,14 @@ function renderMenu(showIntro: boolean): void {
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
+  stopManualStateStatusTimer();
   input.releaseAll();
   app.innerHTML = `
     <main class="app-shell menu-shell">
       <section class="menu-header">
         <p class="eyebrow">iPhone Safari Arcade</p>
         <h1>폰포코 아케이드</h1>
-        <p>폰포코, 퍼즐 보블, 팡을 iPhone Safari 세로 화면에서 실행합니다.</p>
+        <p>폰포코와 아케이드 액션 게임을 iPhone Safari 세로 화면에서 실행합니다.</p>
       </section>
       <section class="game-list" aria-label="게임 선택">
         ${CATALOG.map((game) => renderGameCard(game)).join("")}
@@ -166,6 +176,7 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
+  stopManualStateStatusTimer();
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="loading-panel" aria-live="polite">
@@ -188,6 +199,7 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
 function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): void {
   const profile = getControllerProfile(game);
   const usesBottomZones = profile.zonePlacement === "bottom";
+  const usesVirtualStick = profile.zonePlacement === "virtualStick";
 
   app.innerHTML = `
     <main class="app-shell play-shell">
@@ -200,16 +212,19 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
         ${renderTopbarAction("coin-button", "coin", "동전", "5")}
         ${renderTopbarAction("ok-button", "ok", "OK", "O")}
         ${renderTopbarAction("start-button", "start", "플레이", "Enter")}
+        ${renderStateSlotAction("save-button", "save-state", "저장", controlsEnabled)}
+        ${renderStateSlotAction("load-button", "load-state", "불러오기", controlsEnabled)}
       </header>
       <section class="game-stage">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
-        ${usesBottomZones ? "" : renderTouchZones(profile, controlsEnabled, "stage")}
+        ${usesVirtualStick ? renderVirtualArcadeControls(profile, controlsEnabled) : ""}
+        ${usesBottomZones || usesVirtualStick ? "" : renderTouchZones(profile, controlsEnabled, "stage")}
       </section>
-      <section class="control-panel mobile-control-panel ${usesBottomZones ? "has-bottom-zones" : ""}">
+      <section class="control-panel mobile-control-panel ${usesBottomZones ? "has-bottom-zones" : ""} ${usesVirtualStick ? "has-virtual-stick" : ""}">
         <p>${profile.hint}</p>
         ${usesBottomZones ? renderTouchZones(profile, controlsEnabled, "bottom") : ""}
-        ${renderActionButtons(profile)}
+        ${usesVirtualStick ? "" : renderActionButtons(profile)}
       </section>
       ${renderKeyboardControls(profile)}
       ${bootDebugEnabled ? renderBootDebugPanel() : ""}
@@ -225,6 +240,7 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
   });
 
   wireControls(app, profile);
+  wireStateSlotControls(app);
 }
 
 function renderTopbarAction(className: string, action: ControlAction, label: string, keyLabel: string): string {
@@ -232,6 +248,14 @@ function renderTopbarAction(className: string, action: ControlAction, label: str
     <button class="${className}" type="button" data-action="${action}">
       <span>${label}</span>
       <kbd>${keyLabel}</kbd>
+    </button>
+  `;
+}
+
+function renderStateSlotAction(className: string, dataName: string, label: string, enabled: boolean): string {
+  return `
+    <button class="${className}" type="button" data-${dataName} ${enabled ? "" : "disabled"}>
+      <span>${label}</span>
     </button>
   `;
 }
@@ -255,6 +279,37 @@ function renderTouchZones(profile: ControllerProfile, controlsEnabled: boolean, 
           aria-label="${zone.label}"
         >${surface === "bottom" ? `<span aria-hidden="true">${getTouchZoneGlyph(zone)}</span>` : ""}</button>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled: boolean): string {
+  const directions = profile.zones.filter((zone) => ["up", "down", "left", "right"].includes(zone.area));
+  return `
+    <div
+      class="virtual-arcade-controls ${controlsEnabled ? "is-enabled" : ""} ${profile.buttons.length >= 6 ? "has-six-buttons" : "has-three-buttons"}"
+      data-touch-controls
+      data-touch-surface="virtual"
+      aria-hidden="${controlsEnabled ? "false" : "true"}"
+    >
+      <div class="virtual-stick" aria-label="가상 스틱">
+        ${directions.map((zone) => `
+          <button
+            class="virtual-stick-button stick-${zone.area}"
+            type="button"
+            data-action="${zone.action}"
+            data-touch-zone
+            aria-label="${zone.label}"
+          ></button>
+        `).join("")}
+      </div>
+      <div class="virtual-game-buttons" aria-label="게임 버튼">
+        ${profile.buttons.map((button) => `
+          <button class="virtual-game-button tone-${button.tone}" type="button" data-action="${button.action}">
+            ${button.label}
+          </button>
+        `).join("")}
+      </div>
     </div>
   `;
 }
@@ -338,6 +393,7 @@ function renderError(game: GameEntry, message: string): void {
   stopAutosave();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
+  stopManualStateStatusTimer();
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="error-panel">
@@ -375,6 +431,8 @@ async function startGame(game: GameEntry): Promise<void> {
   runtimeControlsEnabled = false;
   runtimeControlsFinalizing = false;
   runtimeAutosaveRestored = false;
+  manualStateInFlight = false;
+  stopManualStateStatusTimer();
   runtimePrepStatus = "pending";
   await unlockRuntimeAudio();
   await requestWakeLock();
@@ -522,6 +580,15 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
 
     element.addEventListener("touchend", releaseTouch, { passive: false });
     element.addEventListener("touchcancel", releaseTouch, { passive: false });
+  });
+}
+
+function wireStateSlotControls(root: HTMLElement): void {
+  root.querySelector<HTMLButtonElement>("[data-save-state]")?.addEventListener("click", () => {
+    void saveManualStateSlot();
+  });
+  root.querySelector<HTMLButtonElement>("[data-load-state]")?.addEventListener("click", () => {
+    void loadManualStateSlot();
   });
 }
 
@@ -764,6 +831,9 @@ function enableRuntimeControls(): void {
   if (status) {
     status.textContent = "플레이 중";
   }
+  app.querySelectorAll<HTMLButtonElement>("[data-save-state], [data-load-state]").forEach((button) => {
+    button.disabled = false;
+  });
   if (state.name === "game") {
     if (!runtimeAutosaveRestored) {
       startStartupAssist(state.game);
@@ -953,7 +1023,7 @@ function readBootDebugTouchZones(): BootDebugState["touchZones"] {
 }
 
 function getBootDebugTouchSurface(surface: string | undefined): BootDebugState["touchZones"]["surface"] {
-  if (surface === "bottom" || surface === "stage") {
+  if (surface === "bottom" || surface === "stage" || surface === "virtual") {
     return surface;
   }
 
@@ -1030,6 +1100,105 @@ async function saveActiveAutosave(expectedGame?: GameEntry): Promise<boolean> {
   }
 }
 
+async function saveManualStateSlot(): Promise<boolean> {
+  if (manualStateInFlight || state.name !== "game") {
+    return false;
+  }
+
+  const game = state.game;
+  manualStateInFlight = true;
+  setStateSlotButtonsDisabled(true);
+  setGameStatus("저장 중");
+
+  try {
+    await waitForDelay(120);
+    const stateBytes = await nativeEmulator.saveState();
+    const saved = stateBytes ? await saveManualState(game.id, stateBytes) : false;
+    if (isCurrentGame(game)) {
+      setGameStatus(saved ? "저장 완료" : "저장 실패");
+      scheduleGameStatusReset(game);
+    }
+    return saved;
+  } finally {
+    manualStateInFlight = false;
+    if (isCurrentGame(game) && runtimeControlsEnabled) {
+      setStateSlotButtonsDisabled(false);
+    }
+  }
+}
+
+async function loadManualStateSlot(): Promise<boolean> {
+  if (manualStateInFlight || state.name !== "game") {
+    return false;
+  }
+
+  const game = state.game;
+  manualStateInFlight = true;
+  input.releaseAll();
+  setStateSlotButtonsDisabled(true);
+  setGameStatus("불러오는 중");
+
+  try {
+    const savedState = await loadManualState(game.id);
+    if (!savedState) {
+      if (isCurrentGame(game)) {
+        setGameStatus("저장 없음");
+        scheduleGameStatusReset(game);
+      }
+      return false;
+    }
+
+    const loaded = await nativeEmulator.loadState(savedState.state);
+    if (loaded) {
+      await waitForDelay(150);
+    }
+    if (isCurrentGame(game)) {
+      setGameStatus(loaded ? "불러오기 완료" : "불러오기 실패");
+      scheduleGameStatusReset(game);
+    }
+    return loaded;
+  } finally {
+    manualStateInFlight = false;
+    if (isCurrentGame(game) && runtimeControlsEnabled) {
+      setStateSlotButtonsDisabled(false);
+    }
+  }
+}
+
+function isCurrentGame(game: GameEntry): boolean {
+  return state.name === "game" && state.game.id === game.id;
+}
+
+function setStateSlotButtonsDisabled(disabled: boolean): void {
+  app.querySelectorAll<HTMLButtonElement>("[data-save-state], [data-load-state]").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function setGameStatus(status: string): void {
+  const element = app.querySelector<HTMLElement>("[data-game-status]");
+  if (element) {
+    element.textContent = status;
+  }
+}
+
+function scheduleGameStatusReset(game: GameEntry): void {
+  stopManualStateStatusTimer();
+  manualStateStatusTimer = window.setTimeout(() => {
+    if (isCurrentGame(game)) {
+      setGameStatus("플레이 중");
+    }
+    manualStateStatusTimer = null;
+  }, 3_000);
+}
+
+function stopManualStateStatusTimer(): void {
+  if (manualStateStatusTimer !== null) {
+    window.clearTimeout(manualStateStatusTimer);
+    manualStateStatusTimer = null;
+  }
+}
+
 async function requestWakeLock(): Promise<void> {
   const maybeNavigator = navigator as Navigator & {
     wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinel> };
@@ -1063,5 +1232,6 @@ window.addEventListener("pagehide", () => {
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
+  stopManualStateStatusTimer();
   releaseWakeLock();
 });

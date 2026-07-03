@@ -22,7 +22,9 @@ describe("ROM downloader", () => {
       onProgress: (value) => progress.push(value)
     });
 
-    expect(fetcher).toHaveBeenCalledWith("/ponpoko/roms/ponpoko.zip");
+    expect(fetcher).toHaveBeenCalledWith("/ponpoko/roms/ponpoko.zip", expect.objectContaining({
+      cache: "force-cache"
+    }));
     expect(result.blob.size).toBe(4);
     expect(result.objectUrl).not.toBeNull();
     expect(result.objectUrl?.startsWith("blob:")).toBe(true);
@@ -68,7 +70,9 @@ describe("ROM downloader", () => {
       onProgress: (value) => progress.push(value)
     });
 
-    expect(fetcher).toHaveBeenCalledWith("/ponpoko/roms/ponpoko.zip");
+    expect(fetcher).toHaveBeenCalledWith("/ponpoko/roms/ponpoko.zip", expect.objectContaining({
+      cache: "force-cache"
+    }));
     expect(result.byteLength).toBe(4);
     expect([...new Uint8Array(result.arrayBuffer)]).toEqual([...romBytes]);
     expect("objectUrl" in result).toBe(false);

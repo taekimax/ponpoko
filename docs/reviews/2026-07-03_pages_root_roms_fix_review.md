@@ -27,6 +27,7 @@ Implement `docs/handoffs/2026-07-03_github_pages_root_roms_fix_handoff.md`: GitH
 | CP1 | W1 | codex | done | 18m | RED root ROM tests failed on missing manifest/copy script, public-ROM dist mismatch, workflow skip env; GREEN tests now pass | Run build/smoke |
 | CP2 | W2 | codex | done | 24m | `npm run build` copies root ROMs to `dist/roms`; `npm run smoke` validates root/dist SHA-256 equality | Run browser smoke |
 | CP3 | W3 | codex | done | 32m | `npm run browser:smoke` now runs Ponpoko, Bubble Bobble, Super Pang, and prep-failure overlay regression checks | Commit and publish |
+| CP4 | W4 | codex | done | 58m | GitHub Pages run `28652413834` succeeded; live ROM URLs and live WebKit smoke checks passed | Telegram report |
 
 ## Verification Log
 
@@ -46,6 +47,15 @@ Implement `docs/handoffs/2026-07-03_github_pages_root_roms_fix_handoff.md`: GitH
 - `npm run prepare:roms`: pass from `/Volumes/dev/arcade-safari/roms`.
 - Direct local hash check confirms `roms/<romFile>` and `dist/roms/<romFile>` SHA-256 match for all three catalog games.
 - Direct local dist listing confirms `dist/roms` contains only `bublbobl1.zip`, `ponpoko.zip`, and `spangj.zip`.
+- GitHub Pages workflow run `28652413834`: success. Build ran `prepare:roms`, `npm test`, `npm run build`, and `npm run smoke`; deploy completed.
+- Live Pages HTML references `/ponpoko/assets/index-xJVhxZGJ.js`.
+- Live URL checks:
+  - `https://taekimax.github.io/ponpoko/roms/ponpoko.zip`: HTTP 200, SHA-256 matches root `roms/ponpoko.zip` (`8d77d65d7b0a8594a185e4d2c28aec91cf0cb0ff47ef56108e85e4a52f90024f`).
+  - `https://taekimax.github.io/ponpoko/roms/bublbobl1.zip`: HTTP 200, SHA-256 matches root `roms/bublbobl1.zip` (`ce4495598356f1832c76761f9163db6d8b709f0218e9d0869f1e09cca4032e5a`).
+  - `https://taekimax.github.io/ponpoko/roms/spangj.zip`: HTTP 200, SHA-256 matches root `roms/spangj.zip` (`53aed43f2426ee07fb83dd0bde53870812bdca150b617ab19bfecd6e0aefad0d`).
+- `BROWSER_SMOKE_BASE_URL=https://taekimax.github.io/ponpoko/ node scripts/browser-smoke.mjs`: pass.
+- `GAME_RUNTIME_SMOKE_BASE_URL=https://taekimax.github.io/ponpoko/ node scripts/game-runtime-smoke.mjs`: pass.
+- `PONPOKO_PREP_FAILURE_SMOKE_BASE_URL=https://taekimax.github.io/ponpoko/ node scripts/ponpoko-prep-failure-smoke.mjs`: pass.
 
 ## Deletion Impact Note
 
@@ -55,10 +65,10 @@ No test, doc, or config deletions planned.
 
 | CM# | scenario | criteria | outcome | action |
 | --- | --- | --- | --- | --- |
-| CM1 | all-green | final local gates pass and Pages live hashes match root ROMs | local pass; live pending | publish and run live checks |
+| CM1 | all-green | final local gates pass and Pages live hashes match root ROMs | done | report |
 | CM2 | env-blocked | GitHub Pages or Telegram tooling unavailable | pending | record exact blocker |
 | CM3 | decision-blocked | source-of-truth decision unresolved | none | root `roms/` is explicit |
 | CM4 | stuck-recycled | delegated worker stalls | none | no delegation |
 | CM5 | no-findings | no actionable findings | declined | handoff contains A1-A2 |
-| CM6 | partial-delivery | browser/live verification incomplete | live pending | run Pages browser/hash checks after deploy |
+| CM6 | partial-delivery | browser/live verification incomplete | physical iPhone manual play not performed; automated WebKit live smoke passed | report residual gap |
 | CM7 | coverage-regressed | tests removed/renamed beyond threshold | no regression | added 2 test files / 5 tests; no deletions |

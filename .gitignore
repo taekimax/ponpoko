@@ -4,7 +4,3 @@ tsconfig.tsbuildinfo
 .DS_Store
 .env
 .env.*
-public/roms/*.zip
-public/thumbs/*
-!public/roms/.gitkeep
-!public/thumbs/.gitkeep

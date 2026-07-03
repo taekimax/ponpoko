@@ -10,7 +10,6 @@ import type {
 const EMULATOR_DATA_PATH = "/ponpoko/emulatorjs/";
 const EMULATOR_LOADER_URL = `${EMULATOR_DATA_PATH}loader.js`;
 const EMULATOR_WARMUP_TIMEOUT_MS = 8_000;
-const PONPOKO_START_STATE_URL = "/ponpoko/states/ponpoko-start.state?v=20260701";
 type EmulatorAssetFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type EmulatorJsInputState = 0 | 1;
 
@@ -202,18 +201,15 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   window.EJS_color = "#e64040";
   window.EJS_pathtodata = EMULATOR_DATA_PATH;
   window.EJS_disableDatabases = true;
-  window.EJS_forceLegacyCores = true;
   window.EJS_startOnLoaded = true;
   window.EJS_alignStartButton = "center";
   window.EJS_startButtonName = "게임 시작";
   window.EJS_controlScheme = "mame";
   window.EJS_videoRotation = game.rotation;
-  window.EJS_defaultOptions = {
-    "mame2003-plus_skip_disclaimer": "enabled",
-    "mame2003-plus_skip_warnings": "enabled"
-  };
-  if (game.id === "ponpoko") {
-    window.EJS_loadStateURL = PONPOKO_START_STATE_URL;
+  window.EJS_defaultOptions = { ...game.emulator.defaultOptions };
+  window.EJS_forceLegacyCores = game.emulator.forceLegacyCores;
+  if (game.emulator.loadStateUrl) {
+    window.EJS_loadStateURL = game.emulator.loadStateUrl;
   } else {
     delete window.EJS_loadStateURL;
   }
@@ -403,11 +399,7 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
   }
 
   readResourceDebug(): NativeRuntimeResourceDebug {
-    return {
-      coreDataRequests: 0,
-      romRequests: readResourceCount("/roms/ponpoko.zip"),
-      stateRequests: 0
-    };
+    return readRuntimeResourceDebug(this.game, { includeCoreData: false });
   }
 
   async reloadConfiguredState(): Promise<boolean> {
@@ -714,11 +706,7 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   readResourceDebug(): NativeRuntimeResourceDebug {
-    return {
-      coreDataRequests: readResourceCount("/emulatorjs/cores/mame2003_plus-legacy-wasm.data"),
-      romRequests: readResourceCount("/roms/ponpoko.zip"),
-      stateRequests: readResourceCount("/states/ponpoko-start.state")
-    };
+    return readRuntimeResourceDebug(this.game);
   }
 
   suppressRuntimeChrome(): void {
@@ -772,6 +760,20 @@ function isDirectRuntimeUnavailable(error: unknown): boolean {
 
 function readResourceCount(fragment: string): number {
   return performance.getEntriesByType("resource").filter((entry) => entry.name.includes(fragment)).length;
+}
+
+function readRuntimeResourceDebug(
+  game: GameEntry | null,
+  options: { includeCoreData?: boolean } = {}
+): NativeRuntimeResourceDebug {
+  const debugConfig = game?.runtimeDebug;
+  const includeCoreData = options.includeCoreData ?? true;
+
+  return {
+    coreDataRequests: includeCoreData && debugConfig ? readResourceCount(debugConfig.coreDataFragment) : 0,
+    romRequests: debugConfig ? readResourceCount(debugConfig.romFragment) : 0,
+    stateRequests: debugConfig?.stateFragment ? readResourceCount(debugConfig.stateFragment) : 0
+  };
 }
 
 function createRomFile(game: GameEntry, rom: Blob | ArrayBuffer): File {

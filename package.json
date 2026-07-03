@@ -12,6 +12,7 @@
     "prepare:roms": "node scripts/prepare-roms.mjs",
     "notify:ayukawa": "node scripts/notify-ayukawa.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "games:smoke": "node scripts/game-runtime-smoke.mjs",
     "browser:smoke": "node scripts/browser-smoke.mjs",
     "desktop:smoke": "node scripts/desktop-layout-smoke.mjs"
   },

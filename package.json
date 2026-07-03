@@ -12,13 +12,15 @@
     "prepare:roms": "node scripts/prepare-roms.mjs",
     "notify:ayukawa": "node scripts/notify-ayukawa.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "browser:smoke": "node scripts/browser-smoke.mjs"
+    "browser:smoke": "node scripts/browser-smoke.mjs",
+    "desktop:smoke": "node scripts/desktop-layout-smoke.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "vite": "^7.2.7"
   },
   "devDependencies": {
+    "@types/node": "^26.1.0",
     "playwright": "^1.61.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"

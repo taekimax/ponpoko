@@ -1,149 +1,203 @@
 import type { ControlAction } from "./controllers";
+import type { EmulatorInput, NativeEmulator } from "./native-emulator";
 
-interface KeyBinding {
-  key: string;
+interface KeyboardInputBinding {
   code: string;
+  input: EmulatorInput;
+  key: string;
 }
 
-interface EmulatorRuntime {
-  gameManager?: {
-    simulateInput?: (player: number, input: number, pressed: number) => void;
-  };
-}
+const KEYBOARD_INPUTS: KeyboardInputBinding[] = [
+  { code: "ArrowLeft", input: "left", key: "ArrowLeft" },
+  { code: "ArrowRight", input: "right", key: "ArrowRight" },
+  { code: "ArrowUp", input: "up", key: "ArrowUp" },
+  { code: "ArrowDown", input: "down", key: "ArrowDown" },
+  { code: "KeyQ", input: "action1", key: "q" },
+  { code: "KeyW", input: "action2", key: "w" },
+  { code: "KeyE", input: "action3", key: "e" },
+  { code: "KeyA", input: "action4", key: "a" },
+  { code: "KeyS", input: "action5", key: "s" },
+  { code: "KeyD", input: "action6", key: "d" },
+  { code: "BracketLeft", input: "special1", key: "[" },
+  { code: "BracketRight", input: "special2", key: "]" },
+  { code: "Backslash", input: "special3", key: "\\" }
+];
 
-declare global {
-  interface Window {
-    EJS_emulator?: EmulatorRuntime;
+const CONTROL_INPUTS: Record<ControlAction, EmulatorInput> = {
+  action: "action1",
+  attack: "action2",
+  back: "coin",
+  coin: "coin",
+  down: "down",
+  fastDrop: "down",
+  fire: "action1",
+  jump: "action1",
+  left: "left",
+  ok: "start",
+  right: "right",
+  rotate: "action1",
+  special: "action3",
+  start: "start",
+  up: "up",
+  wire: "action2"
+};
+
+const SUSTAINED_INPUTS = new Set<EmulatorInput>(["left", "right"]);
+const SUSTAIN_INTERVAL_MS = 120;
+
+export class InputRouter {
+  private readonly activeInputCounts = new Map<EmulatorInput, number>();
+  private readonly activeKeys = new Map<string, EmulatorInput>();
+  private readonly keyboardDisposers: Array<() => void> = [];
+  private readonly sustainTimers = new Map<EmulatorInput, ReturnType<typeof setInterval>>();
+
+  constructor(private readonly emulator: NativeEmulator) {}
+
+  attachKeyboard(target: EventTarget = window): () => void {
+    const keydown = (event: Event) => this.handleKeyDown(event as KeyboardEvent);
+    const keyup = (event: Event) => this.handleKeyUp(event as KeyboardEvent);
+    const blur = () => this.releaseAll();
+
+    target.addEventListener("keydown", keydown);
+    target.addEventListener("keyup", keyup);
+    target.addEventListener("blur", blur);
+
+    const dispose = () => {
+      target.removeEventListener("keydown", keydown);
+      target.removeEventListener("keyup", keyup);
+      target.removeEventListener("blur", blur);
+    };
+    this.keyboardDisposers.push(dispose);
+    return dispose;
   }
-}
 
-const ACTION_KEYS: Record<ControlAction, KeyBinding> = {
-  left: { key: "ArrowLeft", code: "ArrowLeft" },
-  right: { key: "ArrowRight", code: "ArrowRight" },
-  up: { key: "ArrowUp", code: "ArrowUp" },
-  down: { key: "ArrowDown", code: "ArrowDown" },
-  jump: { key: "a", code: "KeyA" },
-  attack: { key: "s", code: "KeyS" },
-  special: { key: "z", code: "KeyZ" },
-  action: { key: "a", code: "KeyA" },
-  rotate: { key: "a", code: "KeyA" },
-  fastDrop: { key: "ArrowDown", code: "ArrowDown" },
-  fire: { key: "a", code: "KeyA" },
-  wire: { key: "s", code: "KeyS" },
-  ok: { key: "Enter", code: "Enter" },
-  back: { key: "Escape", code: "Escape" },
-  start: { key: "Enter", code: "Enter" },
-  coin: { key: "v", code: "KeyV" }
-};
+  pressControl(action: ControlAction): void {
+    this.press(CONTROL_INPUTS[action]);
+  }
 
-const ACTION_INPUTS: Record<ControlAction, number> = {
-  left: 6,
-  right: 7,
-  up: 4,
-  down: 5,
-  jump: 0,
-  attack: 1,
-  special: 8,
-  action: 0,
-  rotate: 0,
-  fastDrop: 5,
-  fire: 0,
-  wire: 1,
-  ok: 3,
-  back: 2,
-  start: 3,
-  coin: 2
-};
+  releaseControl(action: ControlAction): void {
+    this.release(CONTROL_INPUTS[action]);
+  }
 
-export class InputManager {
-  private readonly activeCounts = new Map<string, number>();
-  private readonly activeInputCounts = new Map<number, number>();
-
-  press(action: ControlAction): void {
-    const binding = ACTION_KEYS[action];
-    const inputId = ACTION_INPUTS[action];
-    const nextCount = (this.activeCounts.get(binding.code) ?? 0) + 1;
-    const nextInputCount = (this.activeInputCounts.get(inputId) ?? 0) + 1;
-    this.activeCounts.set(binding.code, nextCount);
-    this.activeInputCounts.set(inputId, nextInputCount);
+  press(input: EmulatorInput): void {
+    const nextCount = (this.activeInputCounts.get(input) ?? 0) + 1;
+    this.activeInputCounts.set(input, nextCount);
 
     if (nextCount === 1) {
-      this.dispatch("keydown", binding);
-    }
-
-    if (nextInputCount === 1) {
-      this.simulateInput(inputId, 1);
+      this.emulator.press(input);
+      this.startSustain(input);
     }
   }
 
-  release(action: ControlAction): void {
-    const binding = ACTION_KEYS[action];
-    const inputId = ACTION_INPUTS[action];
-    const currentCount = this.activeCounts.get(binding.code) ?? 0;
-    const currentInputCount = this.activeInputCounts.get(inputId) ?? 0;
+  release(input: EmulatorInput): void {
+    const currentCount = this.activeInputCounts.get(input) ?? 0;
 
     if (currentCount <= 1) {
-      this.activeCounts.delete(binding.code);
-      this.dispatch("keyup", binding);
+      this.activeInputCounts.delete(input);
+      this.stopSustain(input);
+      this.emulator.release(input);
     } else {
-      this.activeCounts.set(binding.code, currentCount - 1);
-    }
-
-    if (currentInputCount <= 1) {
-      this.activeInputCounts.delete(inputId);
-      this.simulateInput(inputId, 0);
-    } else {
-      this.activeInputCounts.set(inputId, currentInputCount - 1);
+      this.activeInputCounts.set(input, currentCount - 1);
     }
   }
 
-  tap(action: ControlAction, durationMs = 80): void {
-    this.press(action);
-    window.setTimeout(() => this.release(action), durationMs);
+  tapControl(action: ControlAction, durationMs = 80): void {
+    this.pressControl(action);
+    globalThis.setTimeout(() => this.releaseControl(action), durationMs);
   }
 
-  async tapSequence(actions: ControlAction[], durationMs = 90, gapMs = 80): Promise<void> {
+  async tapControlSequence(actions: ControlAction[], durationMs = 90, gapMs = 80): Promise<void> {
     for (const action of actions) {
-      this.press(action);
+      this.pressControl(action);
       await delay(durationMs);
-      this.release(action);
+      this.releaseControl(action);
       await delay(gapMs);
     }
   }
 
   releaseAll(): void {
-    for (const code of [...this.activeCounts.keys()]) {
-      const binding = Object.values(ACTION_KEYS).find((candidate) => candidate.code === code);
-      if (binding) {
-        this.dispatch("keyup", binding);
-      }
-    }
-    this.activeCounts.clear();
-
-    for (const inputId of [...this.activeInputCounts.keys()]) {
-      this.simulateInput(inputId, 0);
+    this.activeKeys.clear();
+    for (const input of [...this.activeInputCounts.keys()]) {
+      this.stopSustain(input);
+      this.emulator.release(input);
     }
     this.activeInputCounts.clear();
   }
 
-  private dispatch(type: "keydown" | "keyup", binding: KeyBinding): void {
-    const event = new KeyboardEvent(type, {
-      key: binding.key,
-      code: binding.code,
-      bubbles: true,
-      cancelable: true
-    });
-
-    window.dispatchEvent(event);
-    document.dispatchEvent(event);
-    document.body.dispatchEvent(event);
+  dispose(): void {
+    for (const dispose of this.keyboardDisposers.splice(0)) {
+      dispose();
+    }
+    this.releaseAll();
   }
 
-  private simulateInput(inputId: number, pressed: 0 | 1): void {
-    window.EJS_emulator?.gameManager?.simulateInput?.(0, inputId, pressed);
+  private handleKeyDown(event: KeyboardEvent): void {
+    const input = getKeyboardInput(event);
+    if (!input) {
+      return;
+    }
+
+    event.preventDefault();
+    const keyId = getKeyboardEventId(event);
+    if (event.repeat || this.activeKeys.has(keyId)) {
+      return;
+    }
+
+    this.activeKeys.set(keyId, input);
+    this.press(input);
+  }
+
+  private handleKeyUp(event: KeyboardEvent): void {
+    const keyId = getKeyboardEventId(event);
+    const input = this.activeKeys.get(keyId);
+    if (!input) {
+      return;
+    }
+
+    event.preventDefault();
+    this.activeKeys.delete(keyId);
+    this.release(input);
+  }
+
+  private startSustain(input: EmulatorInput): void {
+    if (!SUSTAINED_INPUTS.has(input) || this.sustainTimers.has(input)) {
+      return;
+    }
+
+    const timer = globalThis.setInterval(() => {
+      if (!this.activeInputCounts.has(input)) {
+        this.stopSustain(input);
+        return;
+      }
+
+      this.emulator.press(input);
+    }, SUSTAIN_INTERVAL_MS);
+
+    this.sustainTimers.set(input, timer);
+  }
+
+  private stopSustain(input: EmulatorInput): void {
+    const timer = this.sustainTimers.get(input);
+    if (timer === undefined) {
+      return;
+    }
+
+    globalThis.clearInterval(timer);
+    this.sustainTimers.delete(input);
   }
 }
 
+function getKeyboardInput(event: KeyboardEvent): EmulatorInput | null {
+  const code = event.code;
+  const key = event.key.toLowerCase();
+  const binding = KEYBOARD_INPUTS.find((candidate) => candidate.code === code || candidate.key === key);
+  return binding?.input ?? null;
+}
+
+function getKeyboardEventId(event: KeyboardEvent): string {
+  return event.code || event.key.toLowerCase();
+}
+
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }

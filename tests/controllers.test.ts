@@ -12,31 +12,33 @@ describe("controller profiles", () => {
     }
   });
 
-  it("keeps Ponpoko on the three-zone jump control", () => {
+  it("keeps Ponpoko on the three-zone jump control with vertical swipe movement", () => {
     const ponpoko = CATALOG.find((game) => game.id === "ponpoko");
+    const profile = getControllerProfile(ponpoko!);
 
     expect(ponpoko).toBeDefined();
     expect(ponpoko?.controllerProfile).toBe("platformJump");
-    expect(getControllerProfile(ponpoko!).zones.map((zone) => zone.label)).toEqual([
+    expect(profile.zonePlacement).toBe("bottom");
+    expect(profile.zones.map((zone) => zone.label)).toEqual([
       "왼쪽",
       "점프",
       "오른쪽"
     ]);
+    expect(profile.swipe).toEqual({
+      down: "down",
+      up: "up"
+    });
+    expect(profile.hint).toBe("좌/우 홀드 · 가운데 점프 · 위/아래 스와이프");
   });
 
-  it("uses different layouts for Tetris, Pang, and beat-em-up games", () => {
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "atetris")!).buttons.map((button) => button.label)).toEqual([
-      "회전",
-      "빠른 낙하"
+  it("uses dedicated action buttons for Bubble Bobble and Super Pang", () => {
+    expect(getControllerProfile(CATALOG.find((game) => game.id === "bublbobl1")!).buttons.map((button) => button.label)).toEqual([
+      "점프",
+      "공격"
     ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "pang")!).buttons.map((button) => button.label)).toEqual([
+    expect(getControllerProfile(CATALOG.find((game) => game.id === "spangj")!).buttons.map((button) => button.label)).toEqual([
       "발사",
       "와이어"
-    ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "dino")!).buttons.map((button) => button.label)).toEqual([
-      "공격",
-      "점프",
-      "특수"
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { downloadRom } from "../src/rom-download";
+import { downloadRom, downloadRomArrayBuffer } from "../src/rom-download";
 
 describe("ROM downloader", () => {
   it("downloads a ROM at play time and reports progress", async () => {
@@ -51,5 +51,27 @@ describe("ROM downloader", () => {
 
     expect(result.blob.size).toBe(2);
     expect(result.objectUrl).toBeNull();
+  });
+
+  it("downloads the complete ROM ZIP as one ArrayBuffer handoff", async () => {
+    const progress: number[] = [];
+    const romBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const fetcher = vi.fn(async () => new Response(romBytes, {
+      headers: {
+        "content-length": "4",
+        "content-type": "application/zip"
+      }
+    }));
+
+    const result = await downloadRomArrayBuffer("/ponpoko/roms/ponpoko.zip", {
+      fetcher,
+      onProgress: (value) => progress.push(value)
+    });
+
+    expect(fetcher).toHaveBeenCalledWith("/ponpoko/roms/ponpoko.zip");
+    expect(result.byteLength).toBe(4);
+    expect([...new Uint8Array(result.arrayBuffer)]).toEqual([...romBytes]);
+    expect("objectUrl" in result).toBe(false);
+    expect(progress).toEqual([100]);
   });
 });

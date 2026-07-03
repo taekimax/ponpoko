@@ -1,10 +1,6 @@
 export type ControllerProfileId =
   | "platformJump"
   | "platformFire"
-  | "dpadOneButton"
-  | "tetris"
-  | "beatEmUp"
-  | "puzzleAim"
   | "puzzleShoot";
 
 export interface GameEntry {
@@ -19,7 +15,16 @@ export interface GameEntry {
   controllerProfile: ControllerProfileId;
 }
 
-export const ROM_BASE_PATH = "/ponpoko/roms/";
+type RomImportMeta = ImportMeta & {
+  env?: {
+    VITE_ROM_BASE_URL?: string;
+  };
+};
+
+const DEFAULT_ROM_BASE_PATH = "/ponpoko/roms/";
+const CONFIGURED_ROM_BASE_URL = ((import.meta as RomImportMeta).env?.VITE_ROM_BASE_URL ?? "").trim();
+
+export const ROM_BASE_PATH = normalizeRomBaseUrl(CONFIGURED_ROM_BASE_URL) ?? DEFAULT_ROM_BASE_PATH;
 export const THUMB_BASE_PATH = "/ponpoko/thumbs/";
 
 export const CATALOG: GameEntry[] = [
@@ -35,100 +40,23 @@ export const CATALOG: GameEntry[] = [
     controllerProfile: "platformJump"
   },
   {
-    id: "bubbobr1",
+    id: "bublbobl1",
     titleKo: "보글보글",
     titleEn: "Bubble Bobble",
     core: "mame2003_plus",
     rotation: 0,
-    romFile: "bubbobr1.zip",
+    romFile: "bublbobl1.zip",
     thumbnailFile: "bubbobr1.jpg",
     sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=5&sca=arcade",
     controllerProfile: "platformFire"
   },
   {
-    id: "neobombe",
-    titleKo: "네오범버맨",
-    titleEn: "Neo Bomberman",
+    id: "spangj",
+    titleKo: "슈퍼 팡",
+    titleEn: "Super Pang",
     core: "mame2003_plus",
     rotation: 0,
-    romFile: "neobombe.zip",
-    thumbnailFile: "neobombe.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=353&sca=arcade",
-    controllerProfile: "dpadOneButton"
-  },
-  {
-    id: "atetris",
-    titleKo: "테트리스",
-    titleEn: "Tetris",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "atetris.zip",
-    thumbnailFile: "atetris.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=181&sca=arcade",
-    controllerProfile: "tetris"
-  },
-  {
-    id: "snowbros",
-    titleKo: "스노우 브라더스",
-    titleEn: "Snow Bros.",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "snowbros.zip",
-    thumbnailFile: "snowbros.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=91&sca=arcade",
-    controllerProfile: "platformFire"
-  },
-  {
-    id: "dino",
-    titleKo: "캐딜락&디노사우르스",
-    titleEn: "Cadillacs and Dinosaurs",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "dino.zip",
-    thumbnailFile: "dino.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=82&sca=arcade",
-    controllerProfile: "beatEmUp"
-  },
-  {
-    id: "pbobble",
-    titleKo: "퍼즐 보블",
-    titleEn: "Puzzle Bobble",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "pbobble.zip",
-    thumbnailFile: "pbobble.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=178&sca=arcade",
-    controllerProfile: "puzzleAim"
-  },
-  {
-    id: "penbros",
-    titleKo: "펭귄 브라더스",
-    titleEn: "Penguin Brothers",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "penbros.zip",
-    thumbnailFile: "penbros.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=182&sca=arcade",
-    controllerProfile: "platformFire"
-  },
-  {
-    id: "tnzs",
-    titleKo: "뉴질랜드 스토리",
-    titleEn: "The New Zealand Story",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "tnzs.zip",
-    thumbnailFile: "tnzs.jpg",
-    sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=85&sca=arcade",
-    controllerProfile: "platformFire"
-  },
-  {
-    id: "pang",
-    titleKo: "팡!",
-    titleEn: "Pang!",
-    core: "mame2003_plus",
-    rotation: 0,
-    romFile: "pang.zip",
+    romFile: "spangj.zip",
     thumbnailFile: "pang.jpg",
     sourcePageUrl: "https://www.oldgamenara.com/bbs/board.php?bo_table=oldgame2&wr_id=357",
     controllerProfile: "puzzleShoot"
@@ -136,7 +64,7 @@ export const CATALOG: GameEntry[] = [
 ];
 
 export function getRomPath(game: GameEntry): string {
-  return `${ROM_BASE_PATH}${game.romFile}`;
+  return resolveRomPath(ROM_BASE_PATH, game.romFile);
 }
 
 export function getThumbnailPath(game: GameEntry): string {
@@ -145,4 +73,17 @@ export function getThumbnailPath(game: GameEntry): string {
 
 export function findGame(gameId: string): GameEntry | undefined {
   return CATALOG.find((game) => game.id === gameId);
+}
+
+export function resolveRomPath(baseUrl: string | undefined, romFile: string): string {
+  return `${normalizeRomBaseUrl(baseUrl) ?? DEFAULT_ROM_BASE_PATH}${romFile}`;
+}
+
+function normalizeRomBaseUrl(baseUrl: string | undefined): string | null {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }

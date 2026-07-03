@@ -136,17 +136,6 @@ p {
   font-style: normal;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: end center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.62);
-}
-
-.intro-modal,
 .loading-panel,
 .error-panel {
   width: min(100%, 430px);
@@ -156,14 +145,12 @@ p {
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.44);
 }
 
-.intro-modal h2,
 .loading-panel h1,
 .error-panel h1 {
   margin-bottom: 12px;
   font-size: 24px;
 }
 
-.intro-modal p,
 .loading-panel p,
 .error-panel p {
   margin-bottom: 10px;
@@ -646,14 +633,15 @@ p {
 }
 
 .virtual-arcade-controls {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 5;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 clamp(14px, 4vw, 24px) clamp(12px, 3.5vw, 22px);
+  width: min(100%, 430px);
+  min-height: clamp(116px, 19dvh, 156px);
+  padding: 0;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.16s ease;
@@ -814,7 +802,7 @@ p {
 }
 
 .control-panel.has-virtual-stick {
-  min-height: 34px;
+  gap: 8px;
 }
 
 .action-buttons {
@@ -858,36 +846,6 @@ p {
   text-align: center;
 }
 
-.pixel-loader {
-  display: grid;
-  grid-template-columns: repeat(4, 18px);
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 18px;
-}
-
-.pixel-loader span {
-  width: 18px;
-  height: 18px;
-  background: #efc84a;
-  animation: bounce 0.85s infinite ease-in-out;
-}
-
-.pixel-loader span:nth-child(2) {
-  animation-delay: 0.08s;
-  background: #71dfcf;
-}
-
-.pixel-loader span:nth-child(3) {
-  animation-delay: 0.16s;
-  background: #e0524d;
-}
-
-.pixel-loader span:nth-child(4) {
-  animation-delay: 0.24s;
-  background: #f6f0df;
-}
-
 .progress-track {
   width: 100%;
   height: 12px;
@@ -908,16 +866,6 @@ p {
 .error-actions {
   display: grid;
   gap: 8px;
-}
-
-@keyframes bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-9px);
-  }
 }
 
 @media (min-width: 700px) {

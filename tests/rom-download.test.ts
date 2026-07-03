@@ -78,4 +78,51 @@ describe("ROM downloader", () => {
     expect("objectUrl" in result).toBe(false);
     expect(progress).toEqual([100]);
   });
+
+  it("reuses a locally cached ROM ArrayBuffer before requesting the network", async () => {
+    const cached = new Uint8Array([7, 8, 9]).buffer;
+    const fetcher = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    const romCache = {
+      load: vi.fn(async () => cached),
+      save: vi.fn(async (_cacheKey: string, _arrayBuffer: ArrayBuffer) => true)
+    };
+
+    const result = await downloadRomArrayBuffer("/ponpoko/roms/mslug.zip", {
+      cacheKey: "mslug.zip:hash",
+      fetcher,
+      romCache
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(romCache.load).toHaveBeenCalledWith("mslug.zip:hash");
+    expect(romCache.save).not.toHaveBeenCalled();
+    expect([...new Uint8Array(result.arrayBuffer)]).toEqual([7, 8, 9]);
+  });
+
+  it("saves a freshly downloaded ROM ArrayBuffer for repeat PWA launches", async () => {
+    const romBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const fetcher = vi.fn(async () => new Response(romBytes, {
+      headers: {
+        "content-length": "4",
+        "content-type": "application/zip"
+      }
+    }));
+    const romCache = {
+      load: vi.fn(async () => null),
+      save: vi.fn(async (_cacheKey: string, _arrayBuffer: ArrayBuffer) => true)
+    };
+
+    const result = await downloadRomArrayBuffer("/ponpoko/roms/mslug.zip", {
+      cacheKey: "mslug.zip:hash",
+      fetcher,
+      romCache
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(romCache.save).toHaveBeenCalledWith("mslug.zip:hash", expect.any(ArrayBuffer));
+    const savedBuffer = romCache.save.mock.calls[0]?.[1];
+    expect(savedBuffer).toBeInstanceOf(ArrayBuffer);
+    expect([...new Uint8Array(savedBuffer)]).toEqual([...romBytes]);
+    expect([...new Uint8Array(result.arrayBuffer)]).toEqual([...romBytes]);
+  });
 });

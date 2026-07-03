@@ -67,6 +67,17 @@ describe("emulator boot progress", () => {
     expect(shouldStopBoot(activeSnapshot, 180)).toBe(false);
   });
 
+  it("allows slow iPhone Safari boots to use a game-specific timeout", () => {
+    const longRunningSnapshot = getBootProgressSnapshot(
+      { hasCanvas: true, hasLoaderScript: true },
+      { started: false }
+    );
+
+    expect(shouldStopBoot(longRunningSnapshot, 120, { timeoutSeconds: 300 })).toBe(false);
+    expect(shouldStopBoot(longRunningSnapshot, 299, { timeoutSeconds: 300 })).toBe(false);
+    expect(shouldStopBoot(longRunningSnapshot, 300, { timeoutSeconds: 300 })).toBe(true);
+  });
+
   it("enables controls when runtime progress is visible even if the start event is missed", () => {
     const earlyWarningSnapshot = getBootProgressSnapshot(
       { hasCanvas: true, hasLoaderScript: true },

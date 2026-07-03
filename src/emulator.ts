@@ -34,6 +34,7 @@ interface EmulatorJsAudioSource {
 }
 
 interface EmulatorJsRuntime {
+  callEvent?: (eventName: string) => void;
   Module?: {
     AL?: {
       currentCtx?: {
@@ -285,12 +286,9 @@ function hideElement(element: HTMLElement): void {
 }
 
 export async function loadEmulator(game: GameEntry, gameUrl: File | string, onGameStart: () => void): Promise<void> {
+  resetEmulatorJsRuntime();
   configureEmulator(game, gameUrl, onGameStart);
   suppressEmulatorChrome();
-
-  if (document.querySelector<HTMLScriptElement>('script[data-emulatorjs="loader"]')) {
-    return;
-  }
 
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
@@ -301,6 +299,19 @@ export async function loadEmulator(game: GameEntry, gameUrl: File | string, onGa
     script.onerror = () => reject(new Error("에뮬레이터 로더를 불러오지 못했습니다."));
     document.head.appendChild(script);
   });
+}
+
+export function resetEmulatorJsRuntime(): void {
+  try {
+    window.EJS_emulator?.callEvent?.("exit");
+  } catch {
+    // The runtime may already be partially disposed after failed boot.
+  }
+
+  delete window.EJS_emulator;
+  delete window.EJS_gameUrl;
+  delete window.EJS_loadStateURL;
+  document.querySelectorAll<HTMLScriptElement>('script[data-emulatorjs="loader"]').forEach((script) => script.remove());
 }
 
 export function createNativeEmulator(options: NativeEmulatorSelectionOptions = {}): NativeRuntimeAdapter {
@@ -683,6 +694,7 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
 
   dispose(): void {
     this.releaseActiveInputs();
+    resetEmulatorJsRuntime();
     void this.audioContext?.close();
     this.audioContext = null;
     this.state = "disposed";

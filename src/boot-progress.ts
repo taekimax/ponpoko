@@ -26,6 +26,10 @@ const IPHONE_SAFARI_BLOCKING_WARNING =
 const BOOT_TIMEOUT_SECONDS = 120;
 const ACTIVE_GAMEPLAY_FRAME_THRESHOLD = 60;
 
+export interface BootProgressOptions {
+  timeoutSeconds?: number;
+}
+
 export function getBootProgressSnapshot(
   elements: BootProgressElements,
   emulator: BootProgressRuntime | undefined
@@ -90,12 +94,16 @@ export function getBootProgressCopy(snapshot: BootProgressSnapshot, elapsedSecon
   };
 }
 
-export function shouldStopBoot(snapshot: BootProgressSnapshot, elapsedSeconds: number): boolean {
+export function shouldStopBoot(
+  snapshot: BootProgressSnapshot,
+  elapsedSeconds: number,
+  options: BootProgressOptions = {}
+): boolean {
   if (shouldEnableRuntimeControls(snapshot)) {
     return false;
   }
 
-  return snapshot.failed || elapsedSeconds >= BOOT_TIMEOUT_SECONDS;
+  return snapshot.failed || elapsedSeconds >= (options.timeoutSeconds ?? BOOT_TIMEOUT_SECONDS);
 }
 
 export function shouldEnableRuntimeControls(snapshot: BootProgressSnapshot): boolean {

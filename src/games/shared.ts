@@ -33,6 +33,7 @@ export interface RuntimeDebugConfig {
 }
 
 export interface GameEntry {
+  bootTimeoutSeconds?: number;
   id: GameId;
   titleKo: string;
   titleEn: string;

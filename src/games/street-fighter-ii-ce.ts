@@ -5,6 +5,7 @@ import {
 } from "./shared";
 
 export const STREET_FIGHTER_II_CE_GAME: GameEntry = {
+  bootTimeoutSeconds: 300,
   id: "sf2ce",
   titleKo: "스트리트 파이터 II CE",
   titleEn: "Street Fighter II' Champion Edition",

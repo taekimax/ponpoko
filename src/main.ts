@@ -34,7 +34,7 @@ import {
 import "./styles.css";
 
 type ViewState =
-  | { name: "menu"; intro: boolean }
+  | { name: "menu" }
   | { name: "loading"; game: GameEntry; progress: number; message: string }
   | { name: "game"; game: GameEntry; controlsEnabled: boolean; status: string }
   | { name: "error"; game: GameEntry; message: string };
@@ -49,10 +49,11 @@ const app = getRequiredAppRoot();
 const nativeEmulator = createNativeEmulator();
 const input = new InputRouter(nativeEmulator);
 const AUTOSAVE_INTERVAL_MS = 60_000;
+const APP_BOOT_TIMEOUT_SECONDS = 300;
 const SWIPE_THRESHOLD_PX = 34;
 const TOUCH_POINTER_PREFIX = "touch:";
 const POINTER_PREFIX = "pointer:";
-let state: ViewState = { name: "menu", intro: true };
+let state: ViewState = { name: "menu" };
 let autosaveTimer: number | null = null;
 let autosaveInFlight = false;
 let manualStateInFlight = false;
@@ -88,7 +89,7 @@ function setState(nextState: ViewState): void {
 
 function render(): void {
   if (state.name === "menu") {
-    renderMenu(state.intro);
+    renderMenu();
     return;
   }
 
@@ -105,7 +106,7 @@ function render(): void {
   renderError(state.game, state.message);
 }
 
-function renderMenu(showIntro: boolean): void {
+function renderMenu(): void {
   stopAutosave();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
@@ -122,13 +123,8 @@ function renderMenu(showIntro: boolean): void {
       <section class="game-list" aria-label="게임 선택">
         ${CATALOG.map((game) => renderGameCard(game)).join("")}
       </section>
-      ${showIntro ? renderIntroDialog() : ""}
     </main>
   `;
-
-  app.querySelector<HTMLButtonElement>("[data-close-intro]")?.addEventListener("click", () => {
-    setState({ name: "menu", intro: false });
-  });
 
   app.querySelectorAll<HTMLButtonElement>("[data-game-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -155,19 +151,6 @@ function renderGameCard(game: GameEntry): string {
         <em>${profile.label}</em>
       </span>
     </button>
-  `;
-}
-
-function renderIntroDialog(): string {
-  return `
-    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="intro-title">
-      <section class="intro-modal">
-        <h2 id="intro-title">조작 안내</h2>
-        <p>폰포코는 화면 왼쪽이 왼쪽 이동, 가운데가 점프, 오른쪽이 오른쪽 이동입니다.</p>
-        <p>다른 게임은 선택한 게임에 맞는 전용 버튼이 자동으로 표시됩니다.</p>
-        <button class="primary-action" type="button" data-close-intro>확인하고 시작</button>
-      </section>
-    </div>
   `;
 }
 
@@ -218,13 +201,12 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
       <section class="game-stage">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
-        ${usesVirtualStick ? renderVirtualArcadeControls(profile, controlsEnabled) : ""}
         ${usesBottomZones || usesVirtualStick ? "" : renderTouchZones(profile, controlsEnabled, "stage")}
       </section>
       <section class="control-panel mobile-control-panel ${usesBottomZones ? "has-bottom-zones" : ""} ${usesVirtualStick ? "has-virtual-stick" : ""}">
         <p>${profile.hint}</p>
         ${usesBottomZones ? renderTouchZones(profile, controlsEnabled, "bottom") : ""}
-        ${usesVirtualStick ? "" : renderActionButtons(profile)}
+        ${usesVirtualStick ? renderVirtualArcadeControls(profile, controlsEnabled) : renderActionButtons(profile)}
       </section>
       ${renderKeyboardControls(profile)}
       ${bootDebugEnabled ? renderBootDebugPanel() : ""}
@@ -363,9 +345,6 @@ function renderEmulatorBootOverlay(): string {
   return `
     <div class="emulator-boot-overlay" data-emulator-boot aria-live="polite">
       <div>
-        <div class="pixel-loader" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-        </div>
         <h2>에뮬레이터 준비 중</h2>
         <p class="boot-phase" data-boot-phase>에뮬레이터 로더를 불러오는 중입니다.</p>
         <p class="boot-detail" data-boot-detail>EmulatorJS 로더 스크립트를 같은 origin에서 내려받고 있습니다.</p>
@@ -416,7 +395,7 @@ function renderError(game: GameEntry, message: string): void {
     void saveActiveAutosave();
     stopAutosave();
     nativeEmulator.dispose();
-    setState({ name: "menu", intro: false });
+    setState({ name: "menu" });
   });
 }
 
@@ -441,6 +420,7 @@ async function startGame(game: GameEntry): Promise<void> {
   try {
     const romPath = getRomPath(game);
     const rom = await downloadRomArrayBuffer(romPath, {
+      cacheKey: `${game.romFile}:${game.romVersion}`,
       onProgress: (progress) => {
         setState({ name: "loading", game, progress, message: "ROM 파일을 가져오는 중입니다." });
       }
@@ -459,6 +439,8 @@ async function startGame(game: GameEntry): Promise<void> {
     requestRuntimeAudioUnlock();
     nativeEmulator.suppressRuntimeChrome();
   } catch (error) {
+    input.releaseAll();
+    nativeEmulator.dispose();
     releaseWakeLock();
     stopBootProgressMonitor();
     stopEmulatorChromeSuppression();
@@ -883,7 +865,7 @@ function updateBootProgress(): void {
     return;
   }
 
-  if (shouldStopBoot(snapshot, elapsedSeconds)) {
+  if (shouldStopBoot(snapshot, elapsedSeconds, { timeoutSeconds: state.name === "game" ? getBootTimeoutSeconds(state.game) : undefined })) {
     renderBootFailure(snapshot);
     return;
   }
@@ -907,9 +889,11 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
 
   const message = snapshot.failed
     ? "에뮬레이터가 시작 실패를 보고했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
-    : "에뮬레이터 첫 화면이 120초 안에 시작되지 않았습니다. iPhone Safari에서 탭을 새로고침하거나 다시 시도해 주세요.";
+    : `에뮬레이터 첫 화면이 ${getBootTimeoutSeconds(state.game)}초 안에 시작되지 않았습니다. iPhone Safari에서 탭을 새로고침하거나 다시 시도해 주세요.`;
 
   releaseWakeLock();
+  input.releaseAll();
+  nativeEmulator.dispose();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -918,6 +902,10 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
     game: state.game,
     message
   });
+}
+
+function getBootTimeoutSeconds(game: GameEntry): number {
+  return game.bootTimeoutSeconds ?? APP_BOOT_TIMEOUT_SECONDS;
 }
 
 function readBootProgressSnapshot(): BootProgressSnapshot {

@@ -93,7 +93,10 @@ try {
     window.__expectedSmokeRomUrl = romUrl;
     window.__expectedSmokeStartStateUrl = startStateUrl;
   }, { romUrl: expectedRomUrl, startStateUrl: expectedStartStateUrl });
-  await page.getByRole("button", { name: "확인하고 시작" }).click();
+  const intro = page.getByRole("button", { name: "확인하고 시작" });
+  if (await intro.count()) {
+    await intro.click();
+  }
   await page.locator('[data-game-id="ponpoko"]').click();
   await page.getByText("ROM 다운로드 중").waitFor({ timeout: 5_000 });
   const loadingAnimationVisible = await page.locator(".loading-panel .pixel-loader").count();

@@ -274,6 +274,32 @@ describe("EmulatorJS startup configuration", () => {
     expect(gameManager.loadedState).toEqual(new Uint8Array([4, 5, 6]));
     vi.unstubAllGlobals();
   });
+
+  it("exits and clears the previous EmulatorJS runtime before another game can load", () => {
+    const callEvent = vi.fn();
+    const removeLoader = vi.fn();
+    const target = { textContent: "old canvas" } as HTMLElement;
+    vi.stubGlobal("window", {
+      EJS_emulator: {
+        callEvent
+      }
+    });
+    vi.stubGlobal("document", {
+      querySelectorAll: vi.fn((selector: string) => selector === 'script[data-emulatorjs="loader"]'
+        ? [{ remove: removeLoader }]
+        : [])
+    });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    emulator.attach(target);
+    emulator.dispose();
+
+    expect(callEvent).toHaveBeenCalledWith("exit");
+    expect(removeLoader).toHaveBeenCalledTimes(1);
+    expect(target.textContent).toBe("");
+    expect("EJS_emulator" in window).toBe(false);
+    vi.unstubAllGlobals();
+  });
 });
 
 function createHideableElement(): HTMLElement {

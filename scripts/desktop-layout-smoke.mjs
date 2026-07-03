@@ -18,7 +18,10 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "확인하고 시작" }).click();
+  const intro = page.getByRole("button", { name: "확인하고 시작" });
+  if (await intro.count()) {
+    await intro.click();
+  }
   await page.locator('[data-game-id="ponpoko"]').click();
   await page.locator("canvas").first().waitFor({ timeout: 60_000 });
   await page.waitForFunction(() => (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= 120, {

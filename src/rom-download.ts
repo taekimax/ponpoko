@@ -1,3 +1,5 @@
+import { indexedDbRomCache, type RomArrayBufferCache } from "./rom-cache";
+
 export interface RomDownloadResult {
   blob: Blob;
   objectUrl: string | null;
@@ -10,15 +12,28 @@ export interface RomArrayBufferDownloadResult {
 }
 
 export interface RomDownloadOptions {
+  cacheKey?: string;
   fetcher?: typeof fetch;
   onProgress?: (percent: number) => void;
   createObjectUrl?: boolean;
+  romCache?: RomArrayBufferCache;
 }
 
 export async function downloadRomArrayBuffer(
   url: string,
   options: RomDownloadOptions = {}
 ): Promise<RomArrayBufferDownloadResult> {
+  const cache = options.cacheKey ? options.romCache ?? indexedDbRomCache : null;
+  const cached = options.cacheKey ? await cache?.load(options.cacheKey) : null;
+  if (cached) {
+    options.onProgress?.(100);
+    return {
+      arrayBuffer: cached,
+      byteLength: cached.byteLength,
+      contentType: "application/zip"
+    };
+  }
+
   const fetcher = options.fetcher ?? fetch;
   const response = await fetcher(url, { cache: "force-cache" });
 
@@ -27,6 +42,9 @@ export async function downloadRomArrayBuffer(
   }
 
   const arrayBuffer = await response.arrayBuffer();
+  if (options.cacheKey) {
+    void cache?.save(options.cacheKey, arrayBuffer);
+  }
   options.onProgress?.(100);
 
   return {

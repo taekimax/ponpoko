@@ -5,6 +5,7 @@ import {
 } from "./shared";
 
 export const WARRIORS_OF_FATE_KOREAN_GAME: GameEntry = {
+  bootTimeoutSeconds: 300,
   id: "wofj_korean_v1_20",
   titleKo: "천지를 먹다 II 한국어",
   titleEn: "Warriors of Fate Korean v1.20",

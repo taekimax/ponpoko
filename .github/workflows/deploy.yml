@@ -24,21 +24,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Check remote ROM base URL
-        env:
-          ARCADE_SAFARI_ROM_BASE_URL: ${{ vars.ARCADE_SAFARI_ROM_BASE_URL }}
-        run: |
-          if [ -z "$ARCADE_SAFARI_ROM_BASE_URL" ]; then
-            echo "::error::Set repository variable ARCADE_SAFARI_ROM_BASE_URL to an authorized ROM host before deploying Pages."
-            exit 1
-          fi
       - run: npm run prepare:roms
         env:
           ARCADE_SAFARI_SKIP_ROMS: "1"
       - run: npm test
       - run: npm run build
-        env:
-          VITE_ROM_BASE_URL: ${{ vars.ARCADE_SAFARI_ROM_BASE_URL }}
       - run: npm run smoke
         env:
           ARCADE_SAFARI_SKIP_ROMS: "1"

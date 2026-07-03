@@ -43,6 +43,7 @@ Project development plan: `docs/native-emulator-development-plan.md`.
 | I9 | P4.1/W4.1 | done | `docs/reviews/2026-07-03_native_emulator_review.md` | doc consistency scan | recorded implementation notes, verification, and iPhone validation blocker |
 | I12 | P4.3/P4.5/P4.7 follow-up | done | `src/emulator.ts`, `src/main.ts`, `src/styles.css`, `src/boot-progress.ts`, `tests/emulator.test.ts`, `tests/boot-progress.test.ts`, `scripts/browser-smoke.mjs`, `docs/reviews/2026-07-03_native_emulator_review.md` | `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke`, `npm run browser:smoke`, installed Chrome layout check | 10 files, 37 tests passed; WebKit smoke passed; installed Chrome reports aspect-bound 430x334 stage |
 | I16 | Pages remote ROM source | done | `.github/workflows/deploy.yml`, `README.md`, `src/catalog.ts`, `vite-roms.ts`, `scripts/prepare-roms.mjs`, `scripts/smoke.mjs`, `scripts/browser-smoke.mjs`, `tests/catalog.test.ts`, `tests/vite-roms.test.ts` | `npm test`, `npm run typecheck`, remote-ROM `npm run browser:smoke`, `gh variable list` | `ARCADE_SAFARI_ROM_BASE_URL` set to `https://jessie.adal-alhena.ts.net/ponpoko/roms/`; CORS headers verified for `https://taekimax.github.io` |
+| I19 | Loading screen space fix | done | `src/main.ts`, `scripts/browser-smoke.mjs`, `docs/reviews/2026-07-03_native_emulator_review.md` | `npm run browser:smoke` | loading screen no longer renders the top pixel-loader animation; WebKit smoke verifies the caution text is visible before boot continues |
 
 ## Runtime Decision Session
 
@@ -258,6 +259,7 @@ Follow-up fix notes:
 | I16 | `src/catalog.ts`, `.github/workflows/deploy.yml`, `README.md`, `tests/catalog.test.ts` | Built app can fetch ROMs from `VITE_ROM_BASE_URL`; Pages workflow requires `ARCADE_SAFARI_ROM_BASE_URL` and injects it into the build | done |
 | I17 | `vite-roms.ts`, `tests/vite-roms.test.ts` | External ROM middleware adds CORS headers so GitHub Pages can fetch the Tailscale Serve ROM URL | done |
 | I18 | `src/styles.css`, `scripts/desktop-layout-smoke.mjs`, `package.json` | Desktop Chrome uses a pointer/hover media query to expand the stage while mobile WebKit keeps the compact top-aligned layout | done |
+| I19 | `src/main.ts`, `scripts/browser-smoke.mjs` | Loading view removes the top box animation so the title, progress, and two caution bullets fit on constrained iPhone viewports | done |
 
 Follow-up verification:
 
@@ -280,6 +282,7 @@ Follow-up verification:
 | `curl -I -H 'Origin: https://taekimax.github.io' https://jessie.adal-alhena.ts.net/ponpoko/roms/ponpoko.zip` | `200 OK`, `Content-Type: application/zip`, `Access-Control-Allow-Origin: *` |
 | `VITE_ROM_BASE_URL='https://jessie.adal-alhena.ts.net/ponpoko/roms/' npm run browser:smoke` | passed: WebKit Ponpoko fetches the remote ROM URL and reaches active gameplay |
 | `npm run desktop:smoke` | passed: desktop Chrome media query matched; stage expanded to about `658x512` at `1280x800` |
+| `npm run browser:smoke` after loading animation removal | passed: loading screen has no `.loading-panel .pixel-loader`; loading caution text remains visible; Ponpoko reaches active gameplay |
 | Real iPhone Safari retest | blocked pending user confirmation of audio, resume-popup, overlay-line, and layout fixes |
 
 ## Verification

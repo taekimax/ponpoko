@@ -55,7 +55,7 @@ try {
     const originalFetch = window.fetch.bind(window);
     window.__smokeFetchCalls = [];
     window.__smokeAllInputCalls = [];
-    window.fetch = (input, init) => {
+    window.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : new URL(String(input), window.location.href).href;
       const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
       window.__smokeFetchCalls.push({
@@ -63,6 +63,9 @@ try {
         rangeHeader: headers.get("range"),
         url
       });
+      if (url.endsWith("/ponpoko.zip")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
       return originalFetch(input, init);
     };
 
@@ -91,6 +94,12 @@ try {
   }, { romUrl: expectedRomUrl, startStateUrl: expectedStartStateUrl });
   await page.getByRole("button", { name: "확인하고 시작" }).click();
   await page.locator('[data-game-id="ponpoko"]').click();
+  await page.getByText("ROM 다운로드 중").waitFor({ timeout: 5_000 });
+  const loadingAnimationVisible = await page.locator(".loading-panel .pixel-loader").count();
+  if (loadingAnimationVisible > 0) {
+    throw new Error("Loading screen should not render the top pixel-loader animation");
+  }
+  await page.getByText("Safari를 닫지 말고 기다려 주세요.").waitFor({ timeout: 5_000 });
   await page.locator("[data-game-status]").getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
   await page.getByText("에뮬레이터 준비 중").waitFor({ timeout: 5_000 });
   await page.getByText(/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/).waitFor({ timeout: 5_000 });

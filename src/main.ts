@@ -156,9 +156,6 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="loading-panel" aria-live="polite">
-        <div class="pixel-loader" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-        </div>
         <p class="eyebrow">${game.titleKo}</p>
         <h1>ROM 다운로드 중</h1>
         <p>${message}</p>

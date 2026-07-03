@@ -17,8 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      VITE_ROM_BASE_URL: ${{ vars.ARCADE_SAFARI_ROM_BASE_URL }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -27,8 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Check remote ROM base URL
+        env:
+          ARCADE_SAFARI_ROM_BASE_URL: ${{ vars.ARCADE_SAFARI_ROM_BASE_URL }}
         run: |
-          if [ -z "$VITE_ROM_BASE_URL" ]; then
+          if [ -z "$ARCADE_SAFARI_ROM_BASE_URL" ]; then
             echo "::error::Set repository variable ARCADE_SAFARI_ROM_BASE_URL to an authorized ROM host before deploying Pages."
             exit 1
           fi
@@ -37,6 +37,8 @@ jobs:
           ARCADE_SAFARI_SKIP_ROMS: "1"
       - run: npm test
       - run: npm run build
+        env:
+          VITE_ROM_BASE_URL: ${{ vars.ARCADE_SAFARI_ROM_BASE_URL }}
       - run: npm run smoke
         env:
           ARCADE_SAFARI_SKIP_ROMS: "1"

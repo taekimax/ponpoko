@@ -1,12 +1,33 @@
 import { spawn } from "node:child_process";
+import { inflateSync } from "node:zlib";
 import { webkit } from "playwright";
 
 const port = 4173;
-const baseUrl = `http://127.0.0.1:${port}/ponpoko/`;
+const configuredBaseUrl = process.env.BROWSER_SMOKE_BASE_URL;
+const throwPointerCapture = process.env.BROWSER_SMOKE_THROW_POINTER_CAPTURE === "1";
+const baseUrl = configuredBaseUrl
+  ? ensureTrailingSlash(configuredBaseUrl)
+  : `http://127.0.0.1:${port}/ponpoko/`;
+const appUrl = new URL("?bootDebug=1", baseUrl).href;
+const baseHost = new URL(baseUrl).hostname;
+const expectedRomUrl = new URL("roms/ponpoko.zip", baseUrl).href;
+const expectedEmulatorBaseUrl = new URL("emulatorjs/", baseUrl).href;
+const expectedStartStatePath = "/ponpoko/states/ponpoko-start.state?v=20260701";
+const expectedStartStateUrl = new URL(`states/ponpoko-start.state?v=20260701`, baseUrl).href;
+const expectedEmulatorResources = [
+  "loader.js",
+  "emulator.min.js",
+  "emulator.min.css",
+  "cores/reports/mame2003_plus.json",
+  "cores/mame2003_plus-legacy-wasm.data",
+  "compression/extract7z.js"
+];
 
-const server = spawn("npm", ["run", "preview", "--", "--port", String(port)], {
-  stdio: ["ignore", "pipe", "pipe"]
-});
+const server = configuredBaseUrl
+  ? null
+  : spawn("npm", ["run", "preview", "--", "--port", String(port)], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
 
 try {
   await waitForServer(baseUrl);
@@ -18,32 +39,166 @@ try {
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
   });
   const page = await context.newPage();
+  await page.addInitScript(({ throwPointerCapture }) => {
+    if (throwPointerCapture) {
+      Object.defineProperty(Element.prototype, "setPointerCapture", {
+        configurable: true,
+        value() {
+          throw new Error("smoke setPointerCapture failure");
+        }
+      });
+    }
 
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
+    const originalFetch = window.fetch.bind(window);
+    window.__smokeFetchCalls = [];
+    window.__smokeAllInputCalls = [];
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      window.__smokeFetchCalls.push({
+        beforeLoaderScript: !document.querySelector('script[data-emulatorjs="loader"]'),
+        url
+      });
+      return originalFetch(input, init);
+    };
+
+    window.__smokePatchInputCapture = () => {
+      const gameManager = window.EJS_emulator?.gameManager;
+      if (!gameManager?.simulateInput || gameManager.__smokeInputPatched) {
+        return;
+      }
+
+      const original = gameManager.simulateInput.bind(gameManager);
+      gameManager.__smokeInputPatched = true;
+      gameManager.simulateInput = (player, input, pressed) => {
+        const call = { input, player, pressed };
+        window.__smokeAllInputCalls.push(call);
+        window.__smokeInputCalls?.push(call);
+        original(player, input, pressed);
+      };
+    };
+    window.setInterval(() => window.__smokePatchInputCapture?.(), 50);
+  }, { throwPointerCapture });
+
+  await page.goto(appUrl, { waitUntil: "networkidle" });
+  await page.evaluate(({ romUrl, startStateUrl }) => {
+    window.__expectedSmokeRomUrl = romUrl;
+    window.__expectedSmokeStartStateUrl = startStateUrl;
+  }, { romUrl: expectedRomUrl, startStateUrl: expectedStartStateUrl });
   await page.getByRole("button", { name: "확인하고 시작" }).click();
   await page.locator('[data-game-id="ponpoko"]').click();
-  await page.getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
+  await page.locator("[data-game-status]").getByText(/다운로드 완료|게임 시작/).waitFor({ timeout: 45_000 });
+  await page.getByText("에뮬레이터 준비 중").waitFor({ timeout: 5_000 });
+  await page.getByText(/자동으로 게임이 시작됩니다/).waitFor({ timeout: 5_000 });
+  await page.getByText(/경과 \d+초/).waitFor({ timeout: 5_000 });
+  await page.getByText("ROM 다운로드 완료").waitFor({ timeout: 5_000 });
+  await page.getByText("EmulatorJS 로더 확인").waitFor({ timeout: 5_000 });
+  await page.locator('[data-boot-step="emulator"]').waitFor({ timeout: 5_000 });
+  await page.getByText(/경과 표시가 멈출 수 있습니다/).waitFor({ timeout: 5_000 });
+  await page.locator("[data-boot-phase]").getByText(/로더|초기화|런타임|캔버스|프레임/).waitFor({ timeout: 5_000 });
+  const bootDetailState = await page.evaluate(() => ({
+    detail: document.querySelector("[data-boot-detail]")?.textContent ?? "",
+    elapsed: document.querySelector("[data-boot-elapsed]")?.textContent ?? "",
+    note: document.querySelector("[data-boot-note]")?.textContent ?? "",
+    phase: document.querySelector("[data-boot-phase]")?.textContent ?? "",
+    steps: [...document.querySelectorAll("[data-boot-step]")].map((element) => element.textContent?.trim() ?? "")
+  }));
+  if (!/origin|코어|런타임|캔버스|프레임/.test(bootDetailState.detail)) {
+    throw new Error(`Boot overlay detail is not specific enough: ${JSON.stringify(bootDetailState)}`);
+  }
+  if (!/경과 \d+초/.test(bootDetailState.elapsed) || bootDetailState.steps.length < 5) {
+    throw new Error(`Boot overlay is missing elapsed time or detailed steps: ${JSON.stringify(bootDetailState)}`);
+  }
+  if (!/iPhone Safari.*경과 표시가 멈출 수 있습니다/.test(`${bootDetailState.detail} ${bootDetailState.note}`)) {
+    throw new Error(`Boot overlay does not pre-warn about iPhone Safari timer stalls: ${JSON.stringify(bootDetailState)}`);
+  }
   await page.locator("#game").waitFor({ timeout: 10_000 });
   await page.locator("canvas").first().waitFor({ timeout: 60_000 });
+  await page.waitForFunction(() => (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= 120, { timeout: 30_000 });
+  const earlyStageScreenshot = await page.locator(".game-stage").screenshot();
+  if (hasMameCopyrightWarning(earlyStageScreenshot)) {
+    throw new Error("MAME copyright warning is visible when gameplay controls first become active");
+  }
   await page.waitForTimeout(18_000);
 
-  const runtimeState = await page.evaluate(() => ({
+  const runtimeState = await page.evaluate((emulatorBaseUrl) => ({
     bodyText: document.body.innerText,
     core: window.EJS_core,
+    dataPath: window.EJS_pathtodata,
+    disableDatabases: window.EJS_disableDatabases,
     failed: window.EJS_emulator?.failedToStart,
+    forceLegacyCores: window.EJS_forceLegacyCores,
     frame: window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0,
-    gameUrl: window.EJS_gameUrl,
+    configuredGameUrl: window.EJS_emulator?.config?.gameUrl,
+    configuredLoadState: window.EJS_emulator?.config?.loadState,
+    gameUrlKind: window.EJS_gameUrl instanceof File ? "file" : typeof window.EJS_gameUrl,
+    gameUrlName: window.EJS_gameUrl instanceof File ? window.EJS_gameUrl.name : window.EJS_gameUrl,
+    loadStateUrl: window.EJS_loadStateURL,
     paused: window.EJS_emulator?.paused,
+    preLoaderEmulatorFetches: (window.__smokeFetchCalls ?? [])
+      .filter((call) => call.beforeLoaderScript && call.url.startsWith("https://cdn.emulatorjs.org/stable/data/"))
+      .map((call) => call.url),
+    emulatorCdnResources: performance.getEntriesByType("resource")
+      .filter((entry) => entry.name.startsWith("https://cdn.emulatorjs.org/"))
+      .map((entry) => entry.name),
+    emulatorLocalResources: performance.getEntriesByType("resource")
+      .filter((entry) => entry.name.startsWith(emulatorBaseUrl))
+      .map((entry) => entry.name.slice(emulatorBaseUrl.length)),
+    romRequests: performance.getEntriesByType("resource")
+      .filter((entry) => entry.name === window.__expectedSmokeRomUrl)
+      .length,
+    stateRequests: performance.getEntriesByType("resource")
+      .filter((entry) => entry.name === window.__expectedSmokeStartStateUrl)
+      .length,
     started: window.EJS_emulator?.started,
     videoHeight: window.EJS_emulator?.gameManager?.getVideoDimensions?.("height"),
     videoWidth: window.EJS_emulator?.gameManager?.getVideoDimensions?.("width")
-  }));
+  }), expectedEmulatorBaseUrl);
 
   if (runtimeState.core !== "mame2003_plus") {
     throw new Error(`Expected mame2003_plus core, got ${runtimeState.core}`);
   }
-  if (!runtimeState.gameUrl?.startsWith(`http://127.0.0.1:${port}/ponpoko/roms/ponpoko.zip`)) {
-    throw new Error(`Expected absolute local Ponpoko ROM URL, got ${runtimeState.gameUrl}`);
+  if (runtimeState.dataPath !== "/ponpoko/emulatorjs/") {
+    throw new Error(`Expected local EmulatorJS data path, got ${runtimeState.dataPath}`);
+  }
+  if (runtimeState.disableDatabases !== true) {
+    throw new Error(`Expected EmulatorJS IndexedDB caches to be disabled, got ${runtimeState.disableDatabases}`);
+  }
+  if (runtimeState.forceLegacyCores !== true) {
+    throw new Error(`Expected legacy core path to be forced for Ponpoko state compatibility, got ${runtimeState.forceLegacyCores}`);
+  }
+  if (runtimeState.gameUrlKind !== "file" || runtimeState.gameUrlName !== "ponpoko.zip") {
+    throw new Error(`Expected warmed Ponpoko File ROM input, got ${JSON.stringify(runtimeState)}`);
+  }
+  if (runtimeState.configuredGameUrl !== "ponpoko.zip") {
+    throw new Error(`Expected EmulatorJS to preserve Ponpoko ROM filename, got ${runtimeState.configuredGameUrl}`);
+  }
+  if (runtimeState.romRequests !== 1) {
+    throw new Error(`Expected one Ponpoko network ROM request before EmulatorJS startup, got ${runtimeState.romRequests}`);
+  }
+  if (runtimeState.loadStateUrl !== expectedStartStatePath || runtimeState.configuredLoadState !== expectedStartStatePath) {
+    throw new Error(`Expected Ponpoko post-warning start state to be configured, got ${JSON.stringify(runtimeState)}`);
+  }
+  if (runtimeState.stateRequests !== 2) {
+    throw new Error(`Expected initial and post-warning Ponpoko start state requests, got ${runtimeState.stateRequests}`);
+  }
+  if (runtimeState.preLoaderEmulatorFetches.length > 0) {
+    throw new Error(`App fetched EmulatorJS CDN assets before loader startup: ${JSON.stringify(runtimeState.preLoaderEmulatorFetches)}`);
+  }
+  const disallowedEmulatorCdnResources = runtimeState.emulatorCdnResources.filter(
+    (url) => !isAllowedLocalEmulatorCdnResource(url, baseHost)
+  );
+  if (disallowedEmulatorCdnResources.length > 0) {
+    throw new Error(`EmulatorJS loaded cross-origin CDN resources: ${JSON.stringify(disallowedEmulatorCdnResources)}`);
+  }
+  const loadedEmulatorResources = new Set(runtimeState.emulatorLocalResources);
+  const missingEmulatorResources = expectedEmulatorResources.filter((resource) => !loadedEmulatorResources.has(resource));
+  if (missingEmulatorResources.length > 0) {
+    throw new Error(
+      `EmulatorJS did not load expected same-origin resources: ${JSON.stringify({
+        missing: missingEmulatorResources,
+        loaded: runtimeState.emulatorLocalResources
+      })}`
+    );
   }
   if (runtimeState.failed || !runtimeState.started || runtimeState.paused) {
     throw new Error(`Emulator did not reach active play state: ${JSON.stringify(runtimeState)}`);
@@ -51,8 +206,62 @@ try {
   if (runtimeState.frame < 60 || runtimeState.videoWidth !== 288 || runtimeState.videoHeight !== 224) {
     throw new Error(`Ponpoko video did not advance as expected: ${JSON.stringify(runtimeState)}`);
   }
-  if (/Failed to start game|Load Content|Main Menu/.test(runtimeState.bodyText)) {
+  if (/Failed to start game|Load Content|Main Menu|Restart|Save State|Load State|Context Menu|Virtual Gamepad/.test(runtimeState.bodyText)) {
     throw new Error(`Unexpected emulator menu/error text: ${runtimeState.bodyText}`);
+  }
+  if (/에뮬레이터 준비 중|자동으로 게임이 시작됩니다/.test(runtimeState.bodyText)) {
+    throw new Error(`Emulator boot overlay did not clear after startup: ${runtimeState.bodyText}`);
+  }
+
+  const stageScreenshot = await page.locator(".game-stage").screenshot();
+  if (hasMameCopyrightWarning(stageScreenshot)) {
+    throw new Error("MAME copyright warning is still visible over gameplay");
+  }
+
+  const visibleEmulatorChrome = await page.evaluate(() => {
+    const selectors = [".ejs_virtualGamepad_parent", ".ejs_menu_bar", ".ejs_context_menu", ".ejs_settings_parent"];
+    return selectors.flatMap((selector) => {
+      return [...document.querySelectorAll(selector)].flatMap((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const visible =
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          rect.width > 0 &&
+          rect.height > 0;
+
+        return visible ? [{ selector, width: rect.width, height: rect.height, text: element.innerText }] : [];
+      });
+    });
+  });
+
+  if (visibleEmulatorChrome.length > 0) {
+    throw new Error(`Emulator chrome is visible over the game: ${JSON.stringify(visibleEmulatorChrome)}`);
+  }
+
+  const visibleStageTouchZoneChrome = await page.evaluate(() => {
+    return [...document.querySelectorAll('[data-touch-surface="stage"] [data-touch-zone]')].flatMap((element) => {
+      const style = getComputedStyle(element);
+      const visibleText = element.textContent?.trim() ?? "";
+      const hasBackground = style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent";
+      const hasBorder =
+        Number.parseFloat(style.borderTopWidth) > 0 ||
+        Number.parseFloat(style.borderRightWidth) > 0 ||
+        Number.parseFloat(style.borderBottomWidth) > 0 ||
+        Number.parseFloat(style.borderLeftWidth) > 0;
+
+      return visibleText || hasBackground || hasBorder
+        ? [{
+            backgroundColor: style.backgroundColor,
+            borderTopWidth: style.borderTopWidth,
+            text: visibleText
+          }]
+        : [];
+    });
+  });
+
+  if (visibleStageTouchZoneChrome.length > 0) {
+    throw new Error(`Stage touch zones are visible over the game: ${JSON.stringify(visibleStageTouchZoneChrome)}`);
   }
 
   await page.evaluate(() => {
@@ -60,24 +269,98 @@ try {
     if (!gameManager?.simulateInput) {
       throw new Error("EmulatorJS simulateInput is not available");
     }
-    window.__smokeInputCalls = [];
-    const original = gameManager.simulateInput.bind(gameManager);
-    gameManager.simulateInput = (player, input, pressed) => {
-      window.__smokeInputCalls.push({ input, player, pressed });
-      original(player, input, pressed);
-    };
+    window.__smokePatchInputCapture?.();
   });
-  await holdControl(page, "left", 500);
+
+  const startupInputCalls = await page.evaluate(() => window.__smokeAllInputCalls ?? []);
+  const movementStartupInputCalls = startupInputCalls.filter((call) => ![2, 3].includes(call.input));
+  const expectedWarningAckCalls = [
+    { input: 6, player: 0, pressed: 1 },
+    { input: 6, player: 0, pressed: 0 },
+    { input: 7, player: 0, pressed: 1 },
+    { input: 7, player: 0, pressed: 0 }
+  ];
+  if (JSON.stringify(movementStartupInputCalls) !== JSON.stringify(expectedWarningAckCalls)) {
+    throw new Error(
+      `Ponpoko should only receive one automatic left/right warning acknowledgement before manual play: ${JSON.stringify(startupInputCalls)}`
+    );
+  }
+
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+
+  const leftControl = page.locator('[data-action="left"]').first();
+  const leftBox = await leftControl.boundingBox();
+  if (!leftBox) {
+    throw new Error("Left control was not found");
+  }
+  const stageBox = await page.locator(".game-stage").boundingBox();
+  if (!stageBox) {
+    throw new Error("Game stage was not found");
+  }
+  const leftControlLayout = await leftControl.evaluate((element) => ({
+    surface: element.closest("[data-touch-controls]")?.getAttribute("data-touch-surface") ?? "none",
+    text: element.textContent?.trim() ?? ""
+  }));
+  if (leftControlLayout.surface !== "bottom") {
+    throw new Error(`Expected Ponpoko controls in the bottom dock, got ${JSON.stringify(leftControlLayout)}`);
+  }
+  if (leftBox.y < stageBox.y + stageBox.height - 1) {
+    throw new Error(`Bottom left control overlaps the game stage: ${JSON.stringify({ leftBox, stageBox })}`);
+  }
+  if (!leftControlLayout.text) {
+    throw new Error(`Bottom left control is not visibly labeled: ${JSON.stringify(leftControlLayout)}`);
+  }
+  await page.mouse.move(leftBox.x + leftBox.width / 2, leftBox.y + leftBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(100);
+  const activeBackground = await leftControl.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.mouse.up();
+  if (activeBackground === "rgba(0, 0, 0, 0)" || activeBackground === "transparent") {
+    throw new Error(`Bottom touch control is not visibly tappable: ${activeBackground}`);
+  }
+
+  await holdControl(page, "left", 650);
   await holdControl(page, "jump", 350);
+  await swipeControl(page, "jump", "up");
+  await swipeControl(page, "jump", "down");
+  await tapTouchscreenControl(page, "left");
+  await tapTouchscreenControl(page, "jump");
+  await tapTouchscreenControl(page, "right");
+  await page.waitForFunction(() => {
+    const text = document.querySelector("[data-boot-debug]")?.textContent ?? "";
+    return text.includes("prep=controls-enabled") &&
+      text.includes("touchZones=3 enabled=true visible=true surface=bottom") &&
+      text.includes("touches=") && text.includes("right:down") && text.includes("right:up") &&
+      text.includes("inputs=") && text.includes("7:1") && text.includes("7:0");
+  }, { timeout: 5_000 });
 
   const inputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
   assertInputPair(inputCalls, 6, "left");
+  assertMinimumPresses(inputCalls, 6, "left hold", 3);
   assertInputPair(inputCalls, 0, "jump");
+  assertInputPair(inputCalls, 4, "swipe up");
+  assertInputPair(inputCalls, 5, "swipe down");
+  assertInputPair(inputCalls, 6, "touchscreen left tap");
+  assertInputPair(inputCalls, 0, "touchscreen jump tap");
+  assertInputPair(inputCalls, 7, "touchscreen right tap");
 
   await browser.close();
-  console.log("browser smoke ok: WebKit Ponpoko ROM download, active mame2003_plus gameplay, and touch controls verified");
+  console.log("browser smoke ok: WebKit Ponpoko ROM download, active mame2003_plus gameplay, and bottom touch controls verified");
 } finally {
-  server.kill("SIGTERM");
+  server?.kill("SIGTERM");
+}
+
+function ensureTrailingSlash(url) {
+  return url.endsWith("/") ? url : `${url}/`;
+}
+
+function isAllowedLocalEmulatorCdnResource(url, host) {
+  return (
+    ["localhost", "127.0.0.1"].includes(host) &&
+    url === "https://cdn.emulatorjs.org/stable/data/version.json"
+  );
 }
 
 async function waitForServer(url) {
@@ -108,10 +391,172 @@ async function holdControl(page, action, durationMs) {
   await page.mouse.up();
 }
 
+async function swipeControl(page, action, direction) {
+  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
+  if (!box) {
+    throw new Error(`Control ${action} was not found`);
+  }
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  const endY = direction === "up" ? startY - 90 : startY + 90;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, endY, { steps: 6 });
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+}
+
+async function tapTouchscreenControl(page, action) {
+  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
+  if (!box) {
+    throw new Error(`Control ${action} was not found`);
+  }
+
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(180);
+}
+
 function assertInputPair(calls, input, label) {
   const pressed = calls.some((call) => call.input === input && call.pressed === 1);
   const released = calls.some((call) => call.input === input && call.pressed === 0);
   if (!pressed || !released) {
     throw new Error(`${label} control did not send input ${input}: ${JSON.stringify(calls)}`);
   }
+}
+
+function assertMinimumPresses(calls, input, label, minimum) {
+  const pressCount = calls.filter((call) => call.input === input && call.pressed === 1).length;
+  if (pressCount < minimum) {
+    throw new Error(`${label} did not sustain input ${input}; expected ${minimum} presses, got ${pressCount}: ${JSON.stringify(calls)}`);
+  }
+}
+
+function hasMameCopyrightWarning(pngBuffer) {
+  const image = decodePngRgba(pngBuffer);
+  const yStart = Math.floor(image.height * 0.12);
+  const yEnd = Math.floor(image.height * 0.36);
+  const requiredRun = Math.floor(image.width * 0.62);
+
+  for (let y = yStart; y < yEnd; y += 1) {
+    let run = 0;
+    for (let x = 0; x < image.width; x += 1) {
+      if (isWarningBorderPixel(image, x, y)) {
+        run += 1;
+        if (run >= requiredRun) {
+          return true;
+        }
+      } else {
+        run = 0;
+      }
+    }
+  }
+
+  return false;
+}
+
+function isWarningBorderPixel(image, x, y) {
+  const index = (y * image.width + x) * 4;
+  const red = image.data[index];
+  const green = image.data[index + 1];
+  const blue = image.data[index + 2];
+  const alpha = image.data[index + 3];
+
+  return alpha > 240 && red > 220 && green > 220 && blue > 220;
+}
+
+function decodePngRgba(buffer) {
+  const signature = "89504e470d0a1a0a";
+  if (buffer.subarray(0, 8).toString("hex") !== signature) {
+    throw new Error("Screenshot is not a PNG");
+  }
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idatChunks = [];
+
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    offset += length + 12;
+
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      idatChunks.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  if (bitDepth !== 8 || colorType !== 6) {
+    throw new Error(`Unsupported PNG format: bitDepth=${bitDepth} colorType=${colorType}`);
+  }
+
+  const inflated = inflateSync(Buffer.concat(idatChunks));
+  const bytesPerPixel = 4;
+  const stride = width * bytesPerPixel;
+  const data = new Uint8Array(width * height * bytesPerPixel);
+  let sourceOffset = 0;
+  let previous = new Uint8Array(stride);
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[sourceOffset];
+    sourceOffset += 1;
+    const row = inflated.subarray(sourceOffset, sourceOffset + stride);
+    sourceOffset += stride;
+    const output = data.subarray(y * stride, (y + 1) * stride);
+    unfilterScanline(filter, row, previous, output, bytesPerPixel);
+    previous = output;
+  }
+
+  return { data, height, width };
+}
+
+function unfilterScanline(filter, row, previous, output, bytesPerPixel) {
+  for (let index = 0; index < row.length; index += 1) {
+    const left = index >= bytesPerPixel ? output[index - bytesPerPixel] : 0;
+    const up = previous[index] ?? 0;
+    const upLeft = index >= bytesPerPixel ? previous[index - bytesPerPixel] : 0;
+    let value = row[index];
+
+    if (filter === 1) {
+      value += left;
+    } else if (filter === 2) {
+      value += up;
+    } else if (filter === 3) {
+      value += Math.floor((left + up) / 2);
+    } else if (filter === 4) {
+      value += paethPredictor(left, up, upLeft);
+    } else if (filter !== 0) {
+      throw new Error(`Unsupported PNG filter ${filter}`);
+    }
+
+    output[index] = value & 0xff;
+  }
+}
+
+function paethPredictor(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) {
+    return left;
+  }
+
+  if (upDistance <= upLeftDistance) {
+    return up;
+  }
+
+  return upLeft;
 }

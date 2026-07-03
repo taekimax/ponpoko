@@ -1,6 +1,8 @@
 # 폰포코 아케이드
 
-iPhone Safari 세로 화면 기준의 고전 아케이드 실행기입니다. 정적 카탈로그 10개 게임만 지원하며, 게임을 선택할 때 같은 origin의 `/ponpoko/roms/<romFile>` 경로에서 ROM을 다운로드한 뒤 EmulatorJS `mame2003` 코어로 실행합니다.
+iPhone Safari 세로 화면 기준의 고전 아케이드 실행기입니다. 정적 카탈로그 10개 게임만 지원하며, 게임을 선택할 때 같은 origin의 `/ponpoko/roms/<romFile>` 경로에서 ROM을 다운로드한 뒤 EmulatorJS `mame2003_plus` 코어로 실행합니다.
+
+EmulatorJS 런타임, MAME 코어 데이터, 압축 해제 스크립트는 iPhone Safari의 cross-origin 초기화 변수를 줄이기 위해 `public/emulatorjs/`에서 같은 origin으로 제공합니다. 교체할 때는 `public/emulatorjs/LICENSE`와 `public/emulatorjs/NOTICE.txt`도 함께 확인합니다.
 
 ## 개발
 

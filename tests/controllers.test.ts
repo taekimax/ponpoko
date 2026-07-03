@@ -12,16 +12,23 @@ describe("controller profiles", () => {
     }
   });
 
-  it("keeps Ponpoko on the three-zone jump control", () => {
+  it("keeps Ponpoko on the three-zone jump control with vertical swipe movement", () => {
     const ponpoko = CATALOG.find((game) => game.id === "ponpoko");
+    const profile = getControllerProfile(ponpoko!);
 
     expect(ponpoko).toBeDefined();
     expect(ponpoko?.controllerProfile).toBe("platformJump");
-    expect(getControllerProfile(ponpoko!).zones.map((zone) => zone.label)).toEqual([
+    expect(profile.zonePlacement).toBe("bottom");
+    expect(profile.zones.map((zone) => zone.label)).toEqual([
       "왼쪽",
       "점프",
       "오른쪽"
     ]);
+    expect(profile.swipe).toEqual({
+      down: "down",
+      up: "up"
+    });
+    expect(profile.hint).toBe("좌/우 홀드 · 가운데 점프 · 위/아래 스와이프");
   });
 
   it("uses different layouts for Tetris, Pang, and beat-em-up games", () => {

@@ -1,0 +1,9 @@
+EmulatorJS stable runtime assets
+
+Source: https://cdn.emulatorjs.org/stable/data/
+Project: https://github.com/EmulatorJS/EmulatorJS
+License: GNU GPL v3; see LICENSE in this directory.
+
+Vendored files in this directory are copied unchanged so the iPhone
+Safari runtime can load EmulatorJS, the MAME core bundle, and compression
+workers from the same origin as the app.

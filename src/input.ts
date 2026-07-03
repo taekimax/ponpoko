@@ -11,9 +11,15 @@ interface EmulatorRuntime {
   };
 }
 
+interface DebugInputLogEntry {
+  input: number;
+  pressed: 0 | 1;
+}
+
 declare global {
   interface Window {
     EJS_emulator?: EmulatorRuntime;
+    __ponpokoInputLog?: DebugInputLogEntry[];
   }
 }
 
@@ -55,9 +61,13 @@ const ACTION_INPUTS: Record<ControlAction, number> = {
   coin: 2
 };
 
+const SUSTAINED_ACTIONS = new Set<ControlAction>(["left", "right"]);
+const SUSTAIN_INTERVAL_MS = 120;
+
 export class InputManager {
   private readonly activeCounts = new Map<string, number>();
   private readonly activeInputCounts = new Map<number, number>();
+  private readonly sustainTimers = new Map<number, number>();
 
   press(action: ControlAction): void {
     const binding = ACTION_KEYS[action];
@@ -73,6 +83,9 @@ export class InputManager {
 
     if (nextInputCount === 1) {
       this.simulateInput(inputId, 1);
+      if (SUSTAINED_ACTIONS.has(action)) {
+        this.startSustain(inputId);
+      }
     }
   }
 
@@ -91,6 +104,7 @@ export class InputManager {
 
     if (currentInputCount <= 1) {
       this.activeInputCounts.delete(inputId);
+      this.stopSustain(inputId);
       this.simulateInput(inputId, 0);
     } else {
       this.activeInputCounts.set(inputId, currentInputCount - 1);
@@ -121,6 +135,7 @@ export class InputManager {
     this.activeCounts.clear();
 
     for (const inputId of [...this.activeInputCounts.keys()]) {
+      this.stopSustain(inputId);
       this.simulateInput(inputId, 0);
     }
     this.activeInputCounts.clear();
@@ -140,8 +155,42 @@ export class InputManager {
   }
 
   private simulateInput(inputId: number, pressed: 0 | 1): void {
+    recordDebugInput(inputId, pressed);
     window.EJS_emulator?.gameManager?.simulateInput?.(0, inputId, pressed);
   }
+
+  private startSustain(inputId: number): void {
+    if (this.sustainTimers.has(inputId)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (!this.activeInputCounts.has(inputId)) {
+        this.stopSustain(inputId);
+        return;
+      }
+
+      this.simulateInput(inputId, 1);
+    }, SUSTAIN_INTERVAL_MS);
+
+    this.sustainTimers.set(inputId, timer);
+  }
+
+  private stopSustain(inputId: number): void {
+    const timer = this.sustainTimers.get(inputId);
+    if (timer === undefined) {
+      return;
+    }
+
+    window.clearInterval(timer);
+    this.sustainTimers.delete(inputId);
+  }
+}
+
+function recordDebugInput(input: number, pressed: 0 | 1): void {
+  const log = window.__ponpokoInputLog ?? [];
+  log.push({ input, pressed });
+  window.__ponpokoInputLog = log.slice(-12);
 }
 
 function delay(ms: number): Promise<void> {

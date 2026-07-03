@@ -53,6 +53,24 @@ const games = [
     videoWidth: 304
   },
   {
+    core: "snes9x",
+    id: "snes_smwk",
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "B", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "Y", selector: '[data-touch-surface="virtual"] [data-action="button2"]' },
+      { expectedInput: 8, keyboard: "KeyE", label: "A", selector: '[data-touch-surface="virtual"] [data-action="button3"]' }
+    ],
+    minFrame: 600,
+    minVisiblePixelRatio: 0.08,
+    romFile: "snes_smwk.zip",
+    romVersion: "2b2eb0710c393750f660df34eb8af3dd936258eb993530858d85f065f349170d",
+    title: "슈퍼 마리오 월드 한국어",
+    visibleRegion: { xEnd: 0.95, xStart: 0.05, yEnd: 0.55, yStart: 0.02 },
+    videoHeight: 224,
+    videoWidth: 256
+  },
+  {
     id: "sf2ce",
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
@@ -123,7 +141,7 @@ try {
     await Promise.all(targets.map((target) => target.browser.close()));
   }
 
-  console.log("game runtime smoke ok: runnable catalog games boot on desktop/mobile, render frames, and accept mapped inputs; nss_smw is excluded until its NSS parent BIOS is available");
+  console.log("game runtime smoke ok: catalog games boot on desktop/mobile, render frames, and accept mapped inputs");
 } finally {
   server?.kill("SIGTERM");
 }
@@ -179,6 +197,9 @@ async function verifyGame(target, game) {
     if (hasRetroArchMainMenu(activeStageScreenshot)) {
       throw new Error(`${target.label} ${game.id} still shows the RetroArch main menu instead of gameplay`);
     }
+    if (game.visibleRegion && visiblePixelRatio(activeStageScreenshot, game.visibleRegion) < game.minVisiblePixelRatio) {
+      throw new Error(`${target.label} ${game.id} did not render visible gameplay pixels by frame ${game.minFrame}`);
+    }
 
     const runtimeState = await page.evaluate((expectedRomUrl) => ({
       bodyText: document.body.innerText,
@@ -218,8 +239,9 @@ async function verifyGame(target, game) {
 }
 
 function assertRuntimeState(target, game, runtimeState) {
-  if (runtimeState.core !== "mame2003_plus") {
-    throw new Error(`${target.label} ${game.id} expected mame2003_plus core, got ${runtimeState.core}`);
+  const expectedCore = game.core ?? "mame2003_plus";
+  if (runtimeState.core !== expectedCore) {
+    throw new Error(`${target.label} ${game.id} expected ${expectedCore} core, got ${runtimeState.core}`);
   }
   if (runtimeState.gameUrlKind !== "file" || runtimeState.gameUrlName !== game.romFile) {
     throw new Error(`${target.label} ${game.id} expected warmed File ROM ${game.romFile}, got ${JSON.stringify(runtimeState)}`);
@@ -291,6 +313,27 @@ function hasRetroArchMainMenu(pngBuffer) {
   return leftMenuPanelRatio > 0.75 && bodyPanelRatio > 0.75;
 }
 
+function visiblePixelRatio(pngBuffer, region) {
+  const image = decodePngRgba(pngBuffer);
+  const xStart = Math.floor(image.width * region.xStart);
+  const xEnd = Math.floor(image.width * region.xEnd);
+  const yStart = Math.floor(image.height * region.yStart);
+  const yEnd = Math.floor(image.height * region.yEnd);
+  let visible = 0;
+  let total = 0;
+
+  for (let y = yStart; y < yEnd; y += 1) {
+    for (let x = xStart; x < xEnd; x += 1) {
+      total += 1;
+      if (isVisibleGameplayPixel(image, x, y)) {
+        visible += 1;
+      }
+    }
+  }
+
+  return total > 0 ? visible / total : 0;
+}
+
 function panelPixelRatio(image, xStartRatio, xEndRatio, yStartRatio, yEndRatio) {
   const xStart = Math.floor(image.width * xStartRatio);
   const xEnd = Math.floor(image.width * xEndRatio);
@@ -314,6 +357,11 @@ function panelPixelRatio(image, xStartRatio, xEndRatio, yStartRatio, yEndRatio) 
 function isRetroArchPanelPixel(image, x, y) {
   const { alpha, blue, green, red } = readPixel(image, x, y);
   return alpha > 240 && red >= 25 && red <= 65 && green >= 25 && green <= 65 && blue >= 25 && blue <= 65;
+}
+
+function isVisibleGameplayPixel(image, x, y) {
+  const { alpha, blue, green, red } = readPixel(image, x, y);
+  return alpha > 240 && (red > 16 || green > 16 || blue > 16);
 }
 
 function readPixel(image, x, y) {

@@ -23,6 +23,17 @@ describe("EmulatorJS startup configuration", () => {
     );
   });
 
+  it("uses local SNES9x shell assets while leaving the SNES core data to EmulatorJS startup", () => {
+    expect(getEmulatorWarmupUrls("snes9x")).toEqual([
+      "/ponpoko/emulatorjs/loader.js",
+      "/ponpoko/emulatorjs/emulator.min.js",
+      "/ponpoko/emulatorjs/emulator.min.css",
+      "/ponpoko/emulatorjs/cores/reports/snes9x.json",
+      "/ponpoko/emulatorjs/compression/extract7z.js",
+      "/ponpoko/emulatorjs/compression/extractzip.js"
+    ]);
+  });
+
   it("warms cacheable assets without failing game startup when one request fails", async () => {
     const bodies: Array<{ arrayBuffer: ReturnType<typeof vi.fn> }> = [];
     const fetcher = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {

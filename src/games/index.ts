@@ -2,7 +2,7 @@ import { PONPOKO_GAME } from "./ponpoko";
 import { PUZZLE_BOBBLE_GAME } from "./puzzle-bobble";
 import { SUPER_PANG_GAME } from "./super-pang";
 import { METAL_SLUG_GAME } from "./metal-slug";
-import { NSS_SUPER_MARIO_WORLD_GAME } from "./nss-super-mario-world";
+import { SUPER_MARIO_WORLD_SFC_GAME } from "./super-mario-world-sfc";
 import { STREET_FIGHTER_II_CE_GAME } from "./street-fighter-ii-ce";
 import { WARRIORS_OF_FATE_KOREAN_GAME } from "./warriors-of-fate-korean";
 import type { GameEntry } from "./shared";
@@ -12,7 +12,7 @@ export const GAME_CATALOG = [
   PUZZLE_BOBBLE_GAME,
   SUPER_PANG_GAME,
   METAL_SLUG_GAME,
-  NSS_SUPER_MARIO_WORLD_GAME,
+  SUPER_MARIO_WORLD_SFC_GAME,
   STREET_FIGHTER_II_CE_GAME,
   WARRIORS_OF_FATE_KOREAN_GAME
 ] satisfies GameEntry[];

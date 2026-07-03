@@ -141,6 +141,26 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { id: "button-5", label: "MK", action: "button5", tone: "secondary" },
       { id: "button-6", label: "HK", action: "button6", tone: "danger" }
     ]
+  },
+  sfcSixButton: {
+    id: "sfcSixButton",
+    label: "SFC 6버튼",
+    hint: "왼쪽 스틱 이동 · 오른쪽 SFC 버튼",
+    zonePlacement: "virtualStick",
+    zones: [
+      { id: "stick-up", label: "위", action: "up", area: "up" },
+      { id: "stick-down", label: "아래", action: "down", area: "down" },
+      { id: "stick-left", label: "왼쪽", action: "left", area: "left" },
+      { id: "stick-right", label: "오른쪽", action: "right", area: "right" }
+    ],
+    buttons: [
+      { id: "button-b", label: "B", action: "button1", tone: "primary" },
+      { id: "button-y", label: "Y", action: "button2", tone: "secondary" },
+      { id: "button-a", label: "A", action: "button3", tone: "danger" },
+      { id: "button-x", label: "X", action: "button4", tone: "primary" },
+      { id: "button-l", label: "L", action: "button5", tone: "secondary" },
+      { id: "button-r", label: "R", action: "button6", tone: "danger" }
+    ]
   }
 };
 

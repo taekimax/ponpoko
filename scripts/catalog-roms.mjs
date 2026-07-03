@@ -3,7 +3,7 @@ export const CATALOG_ROMS = [
   "pbobble.zip",
   "spang.zip",
   "mslug.zip",
-  "nss_smw.zip",
+  "snes_smwk.zip",
   "sf2ce.zip",
   "wofj.zip"
 ];

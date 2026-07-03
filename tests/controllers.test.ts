@@ -71,6 +71,25 @@ describe("controller profiles", () => {
     expect(fightingProfile.buttons).toHaveLength(6);
   });
 
+  it("uses SFC-labeled six-button controls for Super Mario World", () => {
+    const profile = getControllerProfile(CATALOG.find((game) => game.id === "snes_smwk")!);
+
+    expect(profile.zonePlacement).toBe("virtualStick");
+    expect(profile.buttons.map((button) => button.label)).toEqual(["B", "Y", "A", "X", "L", "R"]);
+    expect(getKeyboardControlHints(profile)).toEqual([
+      { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
+      { id: "button-b", keys: ["Q"], label: "B" },
+      { id: "button-y", keys: ["W"], label: "Y" },
+      { id: "button-a", keys: ["E"], label: "A" },
+      { id: "button-x", keys: ["A"], label: "X" },
+      { id: "button-l", keys: ["S"], label: "L" },
+      { id: "button-r", keys: ["D"], label: "R" },
+      { id: "coin", keys: ["5"], label: "동전" },
+      { id: "ok", keys: ["O"], label: "OK" },
+      { id: "play", keys: ["Enter", "P"], label: "플레이" }
+    ]);
+  });
+
   it("shows desktop keyboard hints with assigned arcade service keys", () => {
     const puzzleProfile = getControllerProfile(CATALOG.find((game) => game.id === "sf2ce")!);
 

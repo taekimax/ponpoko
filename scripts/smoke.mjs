@@ -11,6 +11,8 @@ const emulatorAssets = [
   "emulator.min.css",
   "cores/reports/mame2003_plus.json",
   "cores/mame2003_plus-legacy-wasm.data",
+  "cores/reports/snes9x.json",
+  "cores/snes9x-legacy-wasm.data",
   "compression/extract7z.js",
   "compression/extractzip.js",
   "LICENSE",

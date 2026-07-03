@@ -5,7 +5,8 @@ export type ControllerProfileId =
   | "platformFire"
   | "puzzleShoot"
   | "arcadeThreeButton"
-  | "arcadeSixButton";
+  | "arcadeSixButton"
+  | "sfcSixButton";
 
 export type GameId =
   | "ponpoko"
@@ -13,9 +14,11 @@ export type GameId =
   | "spang"
   | "bublbobl1"
   | "mslug"
-  | "nss_smw"
+  | "snes_smwk"
   | "sf2ce"
   | "wofj_korean_v1_20";
+
+export type EmulatorCore = "mame2003_plus" | "snes9x";
 
 export interface EmulatorJsGameConfig {
   defaultOptions: Record<string, string>;
@@ -33,7 +36,7 @@ export interface GameEntry {
   id: GameId;
   titleKo: string;
   titleEn: string;
-  core: "mame2003_plus";
+  core: EmulatorCore;
   rotation: 0;
   romFile: string;
   romVersion: string;
@@ -55,10 +58,14 @@ export const SHARED_EMULATOR_CONFIG: EmulatorJsGameConfig = {
   forceLegacyCores: true
 };
 
-export function createMame2003PlusDebugConfig(romFile: string, stateFragment?: string): RuntimeDebugConfig {
+export function createEmulatorDebugConfig(core: EmulatorCore, romFile: string, stateFragment?: string): RuntimeDebugConfig {
   return {
-    coreDataFragment: "/emulatorjs/cores/mame2003_plus-legacy-wasm.data",
+    coreDataFragment: `/emulatorjs/cores/${core}-legacy-wasm.data`,
     romFragment: `/roms/${romFile}`,
     stateFragment
   };
+}
+
+export function createMame2003PlusDebugConfig(romFile: string, stateFragment?: string): RuntimeDebugConfig {
+  return createEmulatorDebugConfig("mame2003_plus", romFile, stateFragment);
 }

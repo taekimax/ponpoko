@@ -94,19 +94,19 @@ describe("EmulatorJS startup configuration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads Ponpoko from a post-warning start state so WebKit does not wait on the copyright screen", () => {
+  it("leaves Ponpoko start-state loading to the post-warning app path", () => {
     const stubWindow = {};
     vi.stubGlobal("window", stubWindow);
 
     configureEmulator(CATALOG[0], "roms/ponpoko.zip", vi.fn());
 
     expect(stubWindow).toMatchObject({
-      EJS_loadStateURL: "/ponpoko/states/ponpoko-start.state?v=20260701",
       EJS_defaultOptions: expect.objectContaining({
         "mame2003-plus_skip_disclaimer": "enabled",
         "mame2003-plus_skip_warnings": "enabled"
       })
     });
+    expect("EJS_loadStateURL" in stubWindow).toBe(false);
     vi.unstubAllGlobals();
   });
 

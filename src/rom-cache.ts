@@ -49,13 +49,12 @@ export async function saveCachedRom(cacheKey: string, arrayBuffer: ArrayBuffer):
 
   let database: IDBDatabase | null = null;
   try {
-    const bytes = arrayBuffer.slice(0);
     database = await openRomCacheDatabase();
     const transaction = database.transaction(ROM_CACHE_STORE_NAME, "readwrite");
     const completed = waitForTransaction(transaction);
     const request = transaction.objectStore(ROM_CACHE_STORE_NAME).put({
-      byteLength: bytes.byteLength,
-      bytes,
+      byteLength: arrayBuffer.byteLength,
+      bytes: arrayBuffer,
       cacheKey,
       savedAt: Date.now(),
       version: ROM_CACHE_RECORD_VERSION

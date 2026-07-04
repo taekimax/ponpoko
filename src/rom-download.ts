@@ -13,6 +13,7 @@ export interface RomArrayBufferDownloadResult {
 
 export interface RomDownloadOptions {
   cacheKey?: string;
+  cacheSaveScheduler?: (task: () => void) => void;
   fetcher?: typeof fetch;
   onProgress?: (percent: number) => void;
   createObjectUrl?: boolean;
@@ -43,7 +44,9 @@ export async function downloadRomArrayBuffer(
 
   const arrayBuffer = await response.arrayBuffer();
   if (options.cacheKey) {
-    void cache?.save(options.cacheKey, arrayBuffer);
+    scheduleCacheSave(() => {
+      void cache?.save(options.cacheKey!, arrayBuffer);
+    }, options.cacheSaveScheduler);
   }
   options.onProgress?.(100);
 
@@ -101,6 +104,24 @@ export async function downloadRom(url: string, options: RomDownloadOptions = {})
     blob,
     objectUrl: createObjectUrl(blob, options)
   };
+}
+
+function scheduleCacheSave(task: () => void, scheduler?: (task: () => void) => void): void {
+  if (scheduler) {
+    scheduler(task);
+    return;
+  }
+
+  const requestIdleCallback = globalThis.requestIdleCallback as
+    | ((callback: IdleRequestCallback, options?: IdleRequestOptions) => number)
+    | undefined;
+
+  if (requestIdleCallback) {
+    requestIdleCallback(() => task(), { timeout: 5_000 });
+    return;
+  }
+
+  globalThis.setTimeout(task, 0);
 }
 
 function createObjectUrl(blob: Blob, options: RomDownloadOptions): string | null {

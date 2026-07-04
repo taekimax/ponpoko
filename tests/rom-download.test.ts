@@ -99,7 +99,8 @@ describe("ROM downloader", () => {
     expect([...new Uint8Array(result.arrayBuffer)]).toEqual([7, 8, 9]);
   });
 
-  it("saves a freshly downloaded ROM ArrayBuffer for repeat PWA launches", async () => {
+  it("defers saving a freshly downloaded ROM ArrayBuffer until after the first response", async () => {
+    vi.useFakeTimers();
     const romBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
     const fetcher = vi.fn(async () => new Response(romBytes, {
       headers: {
@@ -119,10 +120,45 @@ describe("ROM downloader", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(romCache.save).not.toHaveBeenCalled();
+    expect([...new Uint8Array(result.arrayBuffer)]).toEqual([...romBytes]);
+
+    await vi.runAllTimersAsync();
+
     expect(romCache.save).toHaveBeenCalledWith("mslug.zip:hash", expect.any(ArrayBuffer));
     const savedBuffer = romCache.save.mock.calls[0]?.[1];
     expect(savedBuffer).toBeInstanceOf(ArrayBuffer);
     expect([...new Uint8Array(savedBuffer)]).toEqual([...romBytes]);
+    vi.useRealTimers();
+  });
+
+  it("lets the app hold ROM cache writes until gameplay startup is complete", async () => {
+    const romBytes = new Uint8Array([0x50, 0x4b, 0x05, 0x06]);
+    const fetcher = vi.fn(async () => new Response(romBytes, {
+      headers: {
+        "content-length": String(romBytes.byteLength)
+      },
+      status: 200
+    }));
+    const queuedTasks: Array<() => void> = [];
+    const romCache = {
+      load: vi.fn(async () => null),
+      save: vi.fn(async () => true)
+    };
+
+    const result = await downloadRomArrayBuffer("/ponpoko/roms/spang.zip", {
+      cacheKey: "spang.zip:hash",
+      cacheSaveScheduler: (task) => queuedTasks.push(task),
+      fetcher,
+      romCache
+    });
+
     expect([...new Uint8Array(result.arrayBuffer)]).toEqual([...romBytes]);
+    expect(queuedTasks).toHaveLength(1);
+    expect(romCache.save).not.toHaveBeenCalled();
+
+    queuedTasks[0]();
+
+    expect(romCache.save).toHaveBeenCalledWith("spang.zip:hash", expect.any(ArrayBuffer));
   });
 });

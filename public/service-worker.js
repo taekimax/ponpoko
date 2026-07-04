@@ -48,16 +48,55 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    const tracker = createCacheWriteTracker(event);
+    respondWithTrackedCache(event, networkFirst(request, tracker), tracker);
     return;
   }
 
   if (CACHE_FIRST_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
-    event.respondWith(cacheFirst(request));
+    const tracker = createCacheWriteTracker(event);
+    respondWithTrackedCache(event, cacheFirst(request, tracker), tracker);
   }
 });
 
-async function cacheFirst(request) {
+function respondWithTrackedCache(event, responsePromise, tracker) {
+  event.respondWith(
+    responsePromise.then(
+      (response) => {
+        tracker.finish();
+        return response;
+      },
+      (error) => {
+        tracker.finish();
+        throw error;
+      }
+    )
+  );
+}
+
+function createCacheWriteTracker(event) {
+  const writes = [];
+  let resolveLifetime;
+  const lifetime = new Promise((resolve) => {
+    resolveLifetime = resolve;
+  });
+  event.waitUntil(lifetime);
+
+  return {
+    defer(promise) {
+      writes.push(Promise.resolve(promise).catch(() => undefined));
+    },
+    finish() {
+      Promise.allSettled(writes).then(() => resolveLifetime());
+    }
+  };
+}
+
+function cacheFirst(request, tracker) {
+  return cacheFirstResponse(request, tracker);
+}
+
+async function cacheFirstResponse(request, tracker) {
   const cache = await caches.open(RUNTIME_CACHE);
   const cached = await cache.match(request);
   if (cached) {
@@ -66,21 +105,34 @@ async function cacheFirst(request) {
 
   const response = await fetch(request);
   if (response.ok) {
-    await cache.put(request, response.clone());
+    deferCacheWrite(tracker, cache, request, response);
   }
   return response;
 }
 
-async function networkFirst(request) {
+function networkFirst(request, tracker) {
+  return networkFirstResponse(request, tracker);
+}
+
+async function networkFirstResponse(request, tracker) {
   const cache = await caches.open(STATIC_CACHE);
   try {
     const response = await fetch(request);
     if (response.ok) {
-      await cache.put(request, response.clone());
+      deferCacheWrite(tracker, cache, request, response);
     }
     return response;
   } catch {
     const cached = await cache.match(request);
     return cached ?? Response.error();
   }
+}
+
+function deferCacheWrite(tracker, cache, request, response) {
+  const cacheResponse = response.clone();
+  tracker.defer(
+    Promise.resolve()
+      .then(() => cache.put(request, cacheResponse))
+      .catch(() => undefined)
+  );
 }

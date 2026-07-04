@@ -170,7 +170,7 @@ class RecordingRuntime implements NativeRuntimeAdapter {
     return false;
   }
 
-  async reloadConfiguredState(): Promise<boolean> {
+  async reloadConfiguredState(_stateUrl?: string): Promise<boolean> {
     return false;
   }
 

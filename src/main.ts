@@ -20,10 +20,16 @@ import {
   getControllerProfile,
   getKeyboardControlHints
 } from "./controllers";
-import { createNativeEmulator } from "./emulator";
+import { DeferredTaskQueue } from "./deferred-task-queue";
+import { createNativeEmulator, warmUpEmulatorAssets } from "./emulator";
 import { InputRouter } from "./input";
 import { downloadRomArrayBuffer } from "./rom-download";
 import { shouldEnableControlsAfterPrepFailure } from "./runtime-prep";
+import {
+  handleRuntimePageHide,
+  handleRuntimePageShow,
+  type RuntimePageLifecycleContext
+} from "./runtime-lifecycle";
 import { registerServiceWorker } from "./service-worker-registration";
 import { getStartupAssistSequence } from "./startup-assist";
 import {
@@ -64,11 +70,14 @@ let emulatorChromeObserver: MutationObserver | null = null;
 let bootProgressTimer: number | null = null;
 let bootProgressStartedAt = 0;
 let bootDebugTimer: number | null = null;
+let romCacheSaveDrainFrame: number | null = null;
+let romCacheSaveDrainTimer: number | null = null;
 let runtimeControlsEnabled = false;
 let runtimeControlsFinalizing = false;
 let runtimeAutosaveRestored = false;
 let runtimePrepStatus: BootDebugRuntimePrep = "pending";
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
+const romCacheSaveQueue = new DeferredTaskQueue();
 
 input.attachKeyboard(window);
 registerServiceWorker();
@@ -108,6 +117,7 @@ function render(): void {
 
 function renderMenu(): void {
   stopAutosave();
+  clearDeferredRomCacheSaves();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -364,6 +374,7 @@ function renderBootDebugPanel(): string {
 
 function renderError(game: GameEntry, message: string): void {
   stopAutosave();
+  clearDeferredRomCacheSaves();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopManualStateStatusTimer();
@@ -397,6 +408,7 @@ async function startGame(game: GameEntry): Promise<void> {
   input.releaseAll();
   void saveActiveAutosave();
   stopAutosave();
+  clearDeferredRomCacheSaves();
   nativeEmulator.dispose();
   stopStartupAssist();
   stopBootProgressMonitor();
@@ -410,11 +422,13 @@ async function startGame(game: GameEntry): Promise<void> {
   await unlockRuntimeAudio();
   await requestWakeLock();
   setState({ name: "loading", game, progress: 0, message: "ROM 파일을 준비합니다." });
+  void warmUpEmulatorAssets(game.core);
 
   try {
     const romPath = getRomPath(game);
     const rom = await downloadRomArrayBuffer(romPath, {
       cacheKey: `${game.romFile}:${game.romVersion}`,
+      cacheSaveScheduler: queueDeferredRomCacheSave,
       onProgress: (progress) => {
         setState({ name: "loading", game, progress, message: "ROM 파일을 가져오는 중입니다." });
       }
@@ -696,7 +710,11 @@ async function restoreAutosaveState(game: GameEntry): Promise<boolean> {
 }
 
 async function reloadConfiguredStartState(): Promise<boolean> {
-  const reloaded = await nativeEmulator.reloadConfiguredState();
+  if (state.name !== "game" || !state.game.emulator.loadStateUrl) {
+    return false;
+  }
+
+  const reloaded = await nativeEmulator.reloadConfiguredState(state.game.emulator.loadStateUrl);
   await waitForDelay(150);
   return reloaded;
 }
@@ -736,7 +754,42 @@ function enableRuntimeControls(): void {
       startStartupAssist(state.game);
     }
     startAutosave(state.game);
+    drainDeferredRomCacheSavesAfterPaint();
   }
+}
+
+function queueDeferredRomCacheSave(task: () => void): void {
+  romCacheSaveQueue.enqueue(task);
+}
+
+function drainDeferredRomCacheSavesAfterPaint(): void {
+  if (
+    romCacheSaveQueue.pendingCount === 0 ||
+    romCacheSaveDrainFrame !== null ||
+    romCacheSaveDrainTimer !== null
+  ) {
+    return;
+  }
+
+  romCacheSaveDrainFrame = window.requestAnimationFrame(() => {
+    romCacheSaveDrainFrame = null;
+    romCacheSaveDrainTimer = window.setTimeout(() => {
+      romCacheSaveDrainTimer = null;
+      romCacheSaveQueue.drain();
+    }, 0);
+  });
+}
+
+function clearDeferredRomCacheSaves(): void {
+  if (romCacheSaveDrainFrame !== null) {
+    window.cancelAnimationFrame(romCacheSaveDrainFrame);
+    romCacheSaveDrainFrame = null;
+  }
+  if (romCacheSaveDrainTimer !== null) {
+    window.clearTimeout(romCacheSaveDrainTimer);
+    romCacheSaveDrainTimer = null;
+  }
+  romCacheSaveQueue.clear();
 }
 
 function startEmulatorChromeSuppression(): void {
@@ -1126,15 +1179,42 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-window.addEventListener("pagehide", () => {
-  void saveActiveAutosave();
-  input.releaseAll();
-  stopAutosave();
-  nativeEmulator.dispose();
-  stopStartupAssist();
-  stopBootProgressMonitor();
-  stopEmulatorChromeSuppression();
-  stopBootDebugPanel();
-  stopManualStateStatusTimer();
-  releaseWakeLock();
+window.addEventListener("pagehide", (event) => {
+  handleRuntimePageHide(event, createRuntimePageLifecycleContext());
 });
+
+window.addEventListener("pageshow", (event) => {
+  handleRuntimePageShow(event, createRuntimePageLifecycleContext());
+});
+
+function createRuntimePageLifecycleContext(): RuntimePageLifecycleContext {
+  return {
+    disposeEmulator: () => nativeEmulator.dispose(),
+    isGameActive: () => state.name === "game",
+    isRuntimePlayable: () => runtimeControlsEnabled,
+    pauseEmulator: () => nativeEmulator.pause(),
+    releaseAllInputs: () => input.releaseAll(),
+    releaseWakeLock,
+    requestWakeLock: () => {
+      void requestWakeLock();
+    },
+    saveActiveAutosave: () => {
+      void saveActiveAutosave();
+    },
+    startAutosave: () => {
+      if (state.name === "game") {
+        startAutosave(state.game);
+      }
+    },
+    startEmulator: () => {
+      void nativeEmulator.start();
+    },
+    stopAutosave,
+    stopBootDebugPanel,
+    stopBootProgressMonitor,
+    stopEmulatorChromeSuppression,
+    stopManualStateStatusTimer,
+    stopStartupAssist,
+    suppressEmulatorChrome: () => nativeEmulator.suppressRuntimeChrome()
+  };
+}

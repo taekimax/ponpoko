@@ -191,7 +191,7 @@ try {
     configuredLoadState: window.EJS_emulator?.config?.loadState,
     gameUrlKind: window.EJS_gameUrl instanceof File ? "file" : typeof window.EJS_gameUrl,
     gameUrlName: window.EJS_gameUrl instanceof File ? window.EJS_gameUrl.name : window.EJS_gameUrl,
-    loadStateUrl: window.EJS_loadStateURL,
+    loadStateUrl: window.EJS_loadStateURL ?? null,
     paused: window.EJS_emulator?.paused,
     preLoaderEmulatorFetches: (window.__smokeFetchCalls ?? [])
       .filter((call) => call.beforeLoaderScript && call.url.startsWith("https://cdn.emulatorjs.org/stable/data/"))
@@ -242,11 +242,11 @@ try {
   ) {
     throw new Error(`Expected one complete Ponpoko ZIP fetch without Range headers, got ${JSON.stringify(runtimeState.romFetchCalls)}`);
   }
-  if (runtimeState.loadStateUrl !== expectedStartStatePath || runtimeState.configuredLoadState !== expectedStartStatePath) {
-    throw new Error(`Expected Ponpoko post-warning start state to be configured, got ${JSON.stringify(runtimeState)}`);
+  if (runtimeState.loadStateUrl !== null || runtimeState.configuredLoadState !== undefined) {
+    throw new Error(`Expected Ponpoko start state to load from the app path, not EmulatorJS preconfiguration: ${JSON.stringify(runtimeState)}`);
   }
-  if (runtimeState.stateRequests !== 2) {
-    throw new Error(`Expected initial and post-warning Ponpoko start state requests, got ${runtimeState.stateRequests}`);
+  if (runtimeState.stateRequests !== 1) {
+    throw new Error(`Expected one post-warning Ponpoko start state request, got ${runtimeState.stateRequests}`);
   }
   if (runtimeState.preLoaderEmulatorFetches.length > 0) {
     throw new Error(`App fetched EmulatorJS CDN assets before loader startup: ${JSON.stringify(runtimeState.preLoaderEmulatorFetches)}`);

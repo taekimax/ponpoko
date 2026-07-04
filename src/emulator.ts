@@ -86,7 +86,7 @@ export interface NativeRuntimeAdapter extends NativeEmulator {
   isInputReady(minFrame: number): boolean;
   readDebugInfo(): NativeRuntimeDebugInfo;
   readResourceDebug(): NativeRuntimeResourceDebug;
-  reloadConfiguredState(): Promise<boolean>;
+  reloadConfiguredState(stateUrl?: string): Promise<boolean>;
   suppressRuntimeChrome(): void;
 }
 
@@ -220,11 +220,7 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   };
   window.EJS_forceLegacyCores = game.emulator.forceLegacyCores;
   window.EJS_hideSettings = ["menu-bar-button", "virtual-gamepad", "virtual-gamepad-left-handed-mode"];
-  if (game.emulator.loadStateUrl) {
-    window.EJS_loadStateURL = game.emulator.loadStateUrl;
-  } else {
-    delete window.EJS_loadStateURL;
-  }
+  delete window.EJS_loadStateURL;
   window.EJS_VirtualGamepadSettings = [];
   window.EJS_Buttons = {
     playPause: false,
@@ -434,7 +430,7 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
     return readRuntimeResourceDebug(this.game, { includeCoreData: false });
   }
 
-  async reloadConfiguredState(): Promise<boolean> {
+  async reloadConfiguredState(_stateUrl?: string): Promise<boolean> {
     return false;
   }
 
@@ -559,8 +555,8 @@ class RuntimeSelectingNativeEmulator implements NativeRuntimeAdapter {
     return this.active.readResourceDebug();
   }
 
-  async reloadConfiguredState(): Promise<boolean> {
-    return this.active.reloadConfiguredState();
+  async reloadConfiguredState(stateUrl?: string): Promise<boolean> {
+    return this.active.reloadConfiguredState(stateUrl);
   }
 
   suppressRuntimeChrome(): void {
@@ -736,16 +732,16 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
     return Boolean(gameManager?.simulateInput && readFrame(gameManager) >= minFrame);
   }
 
-  async reloadConfiguredState(): Promise<boolean> {
+  async reloadConfiguredState(stateUrl?: string): Promise<boolean> {
     const gameManager = this.getRuntime()?.gameManager;
-    const stateUrl = window.EJS_loadStateURL;
+    const resolvedStateUrl = stateUrl ?? window.EJS_loadStateURL;
 
-    if (!gameManager?.loadState || !stateUrl) {
+    if (!gameManager?.loadState || !resolvedStateUrl) {
       return false;
     }
 
     try {
-      const response = await fetch(stateUrl, { cache: "force-cache" });
+      const response = await fetch(resolvedStateUrl, { cache: "force-cache" });
       if (!response.ok) {
         return false;
       }

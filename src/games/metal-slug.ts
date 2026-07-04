@@ -5,7 +5,6 @@ import {
 } from "./shared";
 
 export const METAL_SLUG_GAME: GameEntry = {
-  bootTimeoutSeconds: 300,
   id: "mslug",
   titleKo: "메탈 슬러그",
   titleEn: "Metal Slug",

@@ -49,7 +49,7 @@ const app = getRequiredAppRoot();
 const nativeEmulator = createNativeEmulator();
 const input = new InputRouter(nativeEmulator);
 const AUTOSAVE_INTERVAL_MS = 60_000;
-const APP_BOOT_TIMEOUT_SECONDS = 300;
+const APP_BOOT_TIMEOUT_SECONDS = 150;
 const SWIPE_THRESHOLD_PX = 34;
 const TOUCH_POINTER_PREFIX = "touch:";
 const POINTER_PREFIX = "pointer:";
@@ -181,8 +181,6 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
 
 function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): void {
   const profile = getControllerProfile(game);
-  const usesBottomZones = profile.zonePlacement === "bottom";
-  const usesVirtualStick = profile.zonePlacement === "virtualStick";
 
   app.innerHTML = `
     <main class="app-shell play-shell">
@@ -201,12 +199,9 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
       <section class="game-stage">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
-        ${usesBottomZones || usesVirtualStick ? "" : renderTouchZones(profile, controlsEnabled, "stage")}
       </section>
-      <section class="control-panel mobile-control-panel ${usesBottomZones ? "has-bottom-zones" : ""} ${usesVirtualStick ? "has-virtual-stick" : ""}">
-        <p>${profile.hint}</p>
-        ${usesBottomZones ? renderTouchZones(profile, controlsEnabled, "bottom") : ""}
-        ${usesVirtualStick ? renderVirtualArcadeControls(profile, controlsEnabled) : renderActionButtons(profile)}
+      <section class="control-panel mobile-control-panel has-virtual-stick">
+        ${renderVirtualArcadeControls(profile, controlsEnabled)}
       </section>
       ${renderKeyboardControls(profile)}
       ${bootDebugEnabled ? renderBootDebugPanel() : ""}
@@ -242,34 +237,11 @@ function renderStateSlotAction(className: string, dataName: string, label: strin
   `;
 }
 
-function renderTouchZones(profile: ControllerProfile, controlsEnabled: boolean, surface: "bottom" | "stage"): string {
-  const supportsSwipe = profile.swipe ? "true" : "false";
-  return `
-    <div
-      class="touch-zones touch-zones-${surface} ${controlsEnabled ? "is-enabled" : ""}"
-      data-touch-controls
-      data-touch-surface="${surface}"
-      aria-hidden="${controlsEnabled ? "false" : "true"}"
-    >
-      ${profile.zones.map((zone) => `
-        <button
-          class="touch-zone area-${zone.area}"
-          type="button"
-          data-action="${zone.action}"
-          data-touch-zone
-          data-swipe-zone="${supportsSwipe}"
-          aria-label="${zone.label}"
-        >${surface === "bottom" ? `<span aria-hidden="true">${getTouchZoneGlyph(zone)}</span>` : ""}</button>
-      `).join("")}
-    </div>
-  `;
-}
-
 function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled: boolean): string {
   const directions = profile.zones.filter((zone) => ["up", "down", "left", "right"].includes(zone.area));
   return `
     <div
-      class="virtual-arcade-controls ${controlsEnabled ? "is-enabled" : ""} ${profile.buttons.length >= 6 ? "has-six-buttons" : "has-three-buttons"}"
+      class="virtual-arcade-controls ${controlsEnabled ? "is-enabled" : ""} has-six-buttons"
       data-touch-controls
       data-touch-surface="virtual"
       aria-hidden="${controlsEnabled ? "false" : "true"}"
@@ -287,43 +259,17 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
       </div>
       <div class="virtual-game-buttons" aria-label="게임 버튼">
         ${profile.buttons.map((button) => `
-          <button class="virtual-game-button tone-${button.tone}" type="button" data-action="${button.action}">
+          <button
+            class="virtual-game-button tone-${button.tone} ${button.inactive ? "is-inactive" : ""}"
+            type="button"
+            data-action="${button.action}"
+            data-controller-button="${button.id}"
+            ${button.inactive ? 'aria-disabled="true" disabled' : ""}
+          >
             ${button.label}
           </button>
         `).join("")}
       </div>
-    </div>
-  `;
-}
-
-function getTouchZoneGlyph(zone: ControllerProfile["zones"][number]): string {
-  if (zone.area === "left") {
-    return "◀";
-  }
-
-  if (zone.area === "right") {
-    return "▶";
-  }
-
-  if (zone.action === "jump") {
-    return `<span class="jump-glyph"><span>▲</span><strong>${zone.label}</strong><span>▼</span></span>`;
-  }
-
-  return zone.label;
-}
-
-function renderActionButtons(profile: ControllerProfile): string {
-  if (profile.buttons.length === 0) {
-    return "";
-  }
-
-  return `
-    <div class="action-buttons">
-      ${profile.buttons.map((button) => `
-        <button class="control-button tone-${button.tone}" type="button" data-action="${button.action}">
-          ${button.label}
-        </button>
-      `).join("")}
     </div>
   `;
 }
@@ -464,6 +410,10 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
   const activePointers = new Map<string, ActivePointer>();
 
   root.querySelectorAll<HTMLElement>("[data-action]").forEach((element) => {
+    if (element instanceof HTMLButtonElement && element.disabled) {
+      return;
+    }
+
     const action = element.dataset.action as ControlAction | undefined;
     if (!action) {
       return;

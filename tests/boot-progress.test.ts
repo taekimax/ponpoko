@@ -62,20 +62,30 @@ describe("emulator boot progress", () => {
     );
 
     expect(shouldStopBoot(failedSnapshot, 1)).toBe(true);
-    expect(shouldStopBoot(longRunningSnapshot, 119)).toBe(false);
-    expect(shouldStopBoot(longRunningSnapshot, 120)).toBe(true);
+    expect(shouldStopBoot(longRunningSnapshot, 149)).toBe(false);
+    expect(shouldStopBoot(longRunningSnapshot, 150)).toBe(true);
     expect(shouldStopBoot(activeSnapshot, 180)).toBe(false);
   });
 
-  it("allows slow iPhone Safari boots to use a game-specific timeout", () => {
+  it("caps explicit game boot timeouts at the app-wide 150 second wait", () => {
     const longRunningSnapshot = getBootProgressSnapshot(
       { hasCanvas: true, hasLoaderScript: true },
       { started: false }
     );
 
-    expect(shouldStopBoot(longRunningSnapshot, 120, { timeoutSeconds: 300 })).toBe(false);
-    expect(shouldStopBoot(longRunningSnapshot, 299, { timeoutSeconds: 300 })).toBe(false);
-    expect(shouldStopBoot(longRunningSnapshot, 300, { timeoutSeconds: 300 })).toBe(true);
+    expect(shouldStopBoot(longRunningSnapshot, 149, { timeoutSeconds: 180 })).toBe(false);
+    expect(shouldStopBoot(longRunningSnapshot, 150, { timeoutSeconds: 180 })).toBe(true);
+    expect(shouldStopBoot(longRunningSnapshot, 179, { timeoutSeconds: 180 })).toBe(true);
+  });
+
+  it("still allows explicit boot timeouts shorter than 150 seconds", () => {
+    const longRunningSnapshot = getBootProgressSnapshot(
+      { hasCanvas: true, hasLoaderScript: true },
+      { started: false }
+    );
+
+    expect(shouldStopBoot(longRunningSnapshot, 89, { timeoutSeconds: 90 })).toBe(false);
+    expect(shouldStopBoot(longRunningSnapshot, 90, { timeoutSeconds: 90 })).toBe(true);
   });
 
   it("enables controls when runtime progress is visible even if the start event is missed", () => {

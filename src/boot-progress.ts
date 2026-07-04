@@ -23,7 +23,7 @@ export interface BootProgressSnapshot {
 
 const IPHONE_SAFARI_BLOCKING_WARNING =
   "처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다.";
-const BOOT_TIMEOUT_SECONDS = 120;
+const BOOT_TIMEOUT_SECONDS = 150;
 const ACTIVE_GAMEPLAY_FRAME_THRESHOLD = 60;
 
 export interface BootProgressOptions {
@@ -103,7 +103,8 @@ export function shouldStopBoot(
     return false;
   }
 
-  return snapshot.failed || elapsedSeconds >= (options.timeoutSeconds ?? BOOT_TIMEOUT_SECONDS);
+  const timeoutSeconds = Math.min(options.timeoutSeconds ?? BOOT_TIMEOUT_SECONDS, BOOT_TIMEOUT_SECONDS);
+  return snapshot.failed || elapsedSeconds >= timeoutSeconds;
 }
 
 export function shouldEnableRuntimeControls(snapshot: BootProgressSnapshot): boolean {

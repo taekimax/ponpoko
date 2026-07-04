@@ -54,6 +54,12 @@ describe("static game catalog", () => {
     }
   });
 
+  it("does not extend mobile boot waits beyond the app-wide 150 second limit", () => {
+    for (const game of CATALOG) {
+      expect(game.bootTimeoutSeconds).toBeUndefined();
+    }
+  });
+
   it("can resolve ROM paths against an authorized remote base URL", () => {
     expect(resolveRomPath("https://assets.example.com/arcade-roms", "ponpoko.zip", "abc123")).toBe(
       "https://assets.example.com/arcade-roms/ponpoko.zip?v=abc123"

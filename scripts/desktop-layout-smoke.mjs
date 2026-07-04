@@ -35,6 +35,7 @@ try {
     const keyboardPanel = document.querySelector(".keyboard-control-panel");
     const mobilePanel = document.querySelector(".mobile-control-panel");
     const stageTouchZones = document.querySelector(".touch-zones-stage");
+    const virtualArcadeControls = document.querySelector(".virtual-arcade-controls");
     if (!canvas || !stage || !controls) {
       return null;
     }
@@ -65,6 +66,7 @@ try {
       stageTouchZonesVisible: isVisible(stageTouchZones),
       topbarText: document.querySelector(".game-topbar")?.textContent ?? "",
       controlsTop: controlsRect.top,
+      virtualArcadeControlsVisible: isVisible(virtualArcadeControls),
       viewportHeight: innerHeight,
       viewportWidth: innerWidth
     };
@@ -88,6 +90,7 @@ try {
   if (
     !layout.keyboardVisible ||
     layout.mobilePanelVisible ||
+    layout.virtualArcadeControlsVisible ||
     layout.stageTouchZonesVisible ||
     !/이동/.test(layout.keyboardText) ||
     !/Q/.test(layout.keyboardText) ||

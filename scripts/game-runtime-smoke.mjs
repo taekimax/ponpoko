@@ -12,10 +12,11 @@ const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
 const games = [
   {
     id: "pbobble",
+    inactiveButtons: 4,
     inputChecks: [
-      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-zone][data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '.control-button[data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '.control-button[data-action="wire"]' }
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '[data-touch-surface="virtual"] [data-action="wire"]' }
     ],
     minFrame: 120,
     romFile: "pbobble.zip",
@@ -26,10 +27,11 @@ const games = [
   },
   {
     id: "spang",
+    inactiveButtons: 4,
     inputChecks: [
-      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-zone][data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '.control-button[data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '.control-button[data-action="wire"]' }
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '[data-touch-surface="virtual"] [data-action="wire"]' }
     ],
     minFrame: 120,
     romFile: "spang.zip",
@@ -40,6 +42,7 @@ const games = [
   },
   {
     id: "mslug",
+    inactiveButtons: 3,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
@@ -55,6 +58,7 @@ const games = [
   {
     core: "snes9x",
     id: "snes_smwk",
+    inactiveButtons: 0,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "B", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
@@ -72,6 +76,7 @@ const games = [
   },
   {
     id: "sf2ce",
+    inactiveButtons: 0,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
@@ -86,6 +91,7 @@ const games = [
   },
   {
     id: "wofj_korean_v1_20",
+    inactiveButtons: 3,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
@@ -220,6 +226,8 @@ async function verifyGame(target, game) {
     }), expectedRomUrl);
 
     assertRuntimeState(target, game, runtimeState);
+    await assertMobileControllerLayout(page, target, game);
+    await assertInactiveButtonsIgnoreInput(page, target, game);
 
     await page.evaluate(() => {
       window.__gameSmokeInputCalls = [];
@@ -236,6 +244,222 @@ async function verifyGame(target, game) {
   } finally {
     await context.close();
   }
+}
+
+async function assertMobileControllerLayout(page, target, game) {
+  if (target.inputMode !== "pointer") {
+    return;
+  }
+
+  const layout = await page.evaluate(() => {
+    const stage = document.querySelector(".game-stage");
+    const controls = document.querySelector('[data-touch-surface="virtual"]');
+    const stick = document.querySelector(".virtual-stick");
+    const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
+    const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
+    const activeControls = [...document.querySelectorAll(
+      '[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled)'
+    )];
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width
+      };
+    };
+    const isVisible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0;
+    };
+    const stageRect = stage ? toRect(stage) : null;
+    const controlsRect = controls ? toRect(controls) : null;
+    const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
+    const stickRect = stick ? toRect(stick) : null;
+    const buttonRects = buttons.map(toRect);
+    const zoneDetails = zones.map((zone) => {
+      const rect = toRect(zone);
+      return {
+        action: zone.getAttribute("data-action"),
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        clipPath: getComputedStyle(zone).clipPath,
+        rect
+      };
+    });
+    const buttonCenters = buttons.map((button) => {
+      const rect = toRect(button);
+      return {
+        id: button.getAttribute("data-controller-button"),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    });
+    const hitFailures = activeControls.flatMap((control) => {
+      const rect = control.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const topControl = document.elementsFromPoint(x, y)
+        .map((element) => element.closest?.("[data-action]"))
+        .find(Boolean);
+
+      return topControl === control
+        ? []
+        : [{
+            action: control.getAttribute("data-action"),
+            topAction: topControl?.getAttribute("data-action") ?? "none"
+          }];
+    });
+
+    return {
+      activeHitFailureCount: hitFailures.length,
+      activeHitFailures: hitFailures,
+      buttonCount: buttons.length,
+      buttonCenters,
+      buttonsVisible: buttons.every(isVisible),
+      controlsRect,
+      controlTop: controlsRect?.top ?? null,
+      dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
+        ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
+        : false,
+      inactiveCount: inactiveButtons.length,
+      inactiveDimmed: inactiveButtons.every((button) => {
+        const style = getComputedStyle(button);
+        return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
+      }),
+      stageRect,
+      stickRect,
+      surface: controls?.getAttribute("data-touch-surface") ?? "none",
+      zoneCount: zones.length,
+      zoneDetails,
+      zonesVisible: zones.every(isVisible)
+    };
+  });
+
+  if (layout.surface !== "virtual" || layout.zoneCount !== 4 || layout.buttonCount !== 6) {
+    throw new Error(`${target.label} ${game.id} expected universal virtual controls, got ${JSON.stringify(layout)}`);
+  }
+  if (!layout.stageRect || !layout.controlsRect || layout.controlTop < layout.stageRect.bottom - 1) {
+    throw new Error(`${target.label} ${game.id} controls overlap gameplay: ${JSON.stringify(layout)}`);
+  }
+  if (!layout.zonesVisible || !layout.buttonsVisible) {
+    throw new Error(`${target.label} ${game.id} controls are not visible: ${JSON.stringify(layout)}`);
+  }
+  if (layout.inactiveCount !== game.inactiveButtons || !layout.inactiveDimmed) {
+    throw new Error(`${target.label} ${game.id} inactive buttons are not dimmed as expected: ${JSON.stringify(layout)}`);
+  }
+  if (layout.activeHitFailureCount > 0) {
+    throw new Error(`${target.label} ${game.id} controls are intercepted: ${JSON.stringify(layout)}`);
+  }
+  assertUniversalControllerGeometry(layout, `${target.label} ${game.id}`);
+  await assertControlFeedback(page, '[data-touch-surface="virtual"] [data-action="left"]', `${target.label} ${game.id} D-pad left`);
+  await assertControlFeedback(
+    page,
+    '[data-touch-surface="virtual"] .virtual-game-button:not(:disabled)',
+    `${target.label} ${game.id} action button`
+  );
+}
+
+async function assertInactiveButtonsIgnoreInput(page, target, game) {
+  if (target.inputMode !== "pointer" || game.inactiveButtons === 0) {
+    return;
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+
+  const box = await page.locator('[data-touch-surface="virtual"] .virtual-game-button.is-inactive').first().boundingBox();
+  if (!box) {
+    throw new Error(`${target.label} ${game.id} inactive button was not found`);
+  }
+
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(120);
+  const calls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  if (calls.length > 0) {
+    throw new Error(`${target.label} ${game.id} inactive button sent input: ${JSON.stringify(calls)}`);
+  }
+}
+
+function assertUniversalControllerGeometry(layout, label) {
+  if (!layout.dpadLeftOfButtons || !layout.stickRect) {
+    throw new Error(`${label} D-pad is not positioned to the left of action buttons: ${JSON.stringify(layout)}`);
+  }
+
+  const stickMidX = layout.stickRect.left + layout.stickRect.width / 2;
+  const stickMidY = layout.stickRect.top + layout.stickRect.height / 2;
+  const zones = new Map(layout.zoneDetails.map((zone) => [zone.action, zone]));
+  const expectedQuadrants = [
+    ["up", (zone) => Math.abs(zone.centerX - stickMidX) <= layout.stickRect.width * 0.12 && zone.centerY < stickMidY],
+    ["right", (zone) => zone.centerX > stickMidX && Math.abs(zone.centerY - stickMidY) <= layout.stickRect.height * 0.12],
+    ["down", (zone) => Math.abs(zone.centerX - stickMidX) <= layout.stickRect.width * 0.12 && zone.centerY > stickMidY],
+    ["left", (zone) => zone.centerX < stickMidX && Math.abs(zone.centerY - stickMidY) <= layout.stickRect.height * 0.12]
+  ];
+
+  for (const [action, matchesQuadrant] of expectedQuadrants) {
+    const zone = zones.get(action);
+    if (!zone || zone.clipPath === "none" || !matchesQuadrant(zone)) {
+      throw new Error(`${label} D-pad slice ${action} is not a clipped wedge in the expected quadrant: ${JSON.stringify(layout)}`);
+    }
+  }
+
+  const buttons = layout.buttonCenters;
+  if (
+    buttons.length !== 6 ||
+    !isRisingDiagonal(buttons.slice(0, 3)) ||
+    !isRisingDiagonal(buttons.slice(3, 6))
+  ) {
+    throw new Error(`${label} action buttons are not arranged in two rising diagonals: ${JSON.stringify(layout)}`);
+  }
+}
+
+function isRisingDiagonal(buttons) {
+  return buttons.length === 3 &&
+    buttons[0].x < buttons[1].x &&
+    buttons[1].x < buttons[2].x &&
+    buttons[0].y > buttons[1].y &&
+    buttons[1].y > buttons[2].y;
+}
+
+async function assertControlFeedback(page, selector, label) {
+  const control = page.locator(selector).first();
+  const box = await control.boundingBox();
+  if (!box) {
+    throw new Error(`${label} control was not found for feedback check`);
+  }
+
+  const before = await control.evaluate(readFeedbackStyle);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  const active = await control.evaluate(readFeedbackStyle);
+  await page.mouse.up();
+
+  if (
+    before.filter === active.filter &&
+    before.boxShadow === active.boxShadow &&
+    before.transform === active.transform
+  ) {
+    throw new Error(`${label} does not show haptic-style visual feedback: ${JSON.stringify({ active, before })}`);
+  }
+}
+
+function readFeedbackStyle(element) {
+  const style = getComputedStyle(element);
+  return {
+    boxShadow: style.boxShadow,
+    filter: style.filter,
+    transform: style.transform
+  };
 }
 
 function assertRuntimeState(target, game, runtimeState) {

@@ -34,10 +34,10 @@ describe("boot debug diagnostics", () => {
         { action: "left", type: "up" }
       ],
       touchZones: {
-        count: 3,
+        count: 4,
         enabled: true,
-        surface: "bottom",
-        visible: false
+        surface: "virtual",
+        visible: true
       },
       videoHeight: 224,
       videoWidth: 288
@@ -51,7 +51,7 @@ describe("boot debug diagnostics", () => {
       "resources=rom:1 state:1 coreData:1",
       "prep=controls-enabled",
       "overlay=false",
-      "touchZones=3 enabled=true visible=false surface=bottom",
+      "touchZones=4 enabled=true visible=true surface=virtual",
       "touches=left:down left:up",
       "inputs=6:1 6:0"
     ]);

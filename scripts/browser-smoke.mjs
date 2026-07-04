@@ -393,7 +393,7 @@ try {
     window.__smokeInputCalls = [];
   });
 
-  const leftControl = page.locator('[data-action="left"]').first();
+  const leftControl = page.locator('[data-touch-surface="virtual"] [data-action="left"]').first();
   const leftBox = await leftControl.boundingBox();
   if (!leftBox) {
     throw new Error("Left control was not found");
@@ -403,38 +403,107 @@ try {
     throw new Error("Game stage was not found");
   }
   const leftControlLayout = await leftControl.evaluate((element) => ({
+    ariaLabel: element.getAttribute("aria-label") ?? "",
     surface: element.closest("[data-touch-controls]")?.getAttribute("data-touch-surface") ?? "none",
     text: element.textContent?.trim() ?? ""
   }));
-  if (leftControlLayout.surface !== "bottom") {
-    throw new Error(`Expected Ponpoko controls in the bottom dock, got ${JSON.stringify(leftControlLayout)}`);
+  if (leftControlLayout.surface !== "virtual") {
+    throw new Error(`Expected Ponpoko controls in the universal virtual controller, got ${JSON.stringify(leftControlLayout)}`);
   }
   if (leftBox.y < stageBox.y + stageBox.height - 1) {
-    throw new Error(`Bottom left control overlaps the game stage: ${JSON.stringify({ leftBox, stageBox })}`);
+    throw new Error(`Virtual D-pad overlaps the game stage: ${JSON.stringify({ leftBox, stageBox })}`);
   }
-  if (!leftControlLayout.text) {
-    throw new Error(`Bottom left control is not visibly labeled: ${JSON.stringify(leftControlLayout)}`);
+  if (!leftControlLayout.ariaLabel) {
+    throw new Error(`D-pad slice is missing an accessible label: ${JSON.stringify(leftControlLayout)}`);
   }
-  const jumpControlLayout = await page.locator('[data-action="jump"]').first().evaluate((element) => ({
-    text: element.textContent?.trim() ?? ""
-  }));
-  if (!/▲.*점프.*▼/s.test(jumpControlLayout.text)) {
-    throw new Error(`Jump control does not show up/down swipe affordance: ${JSON.stringify(jumpControlLayout)}`);
-  }
-  const bottomControlLayout = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll('[data-touch-surface="bottom"] [data-touch-zone]')];
-    const rects = controls.map((element) => element.getBoundingClientRect());
+  const controllerLayout = await page.evaluate(() => {
+    const surface = document.querySelector('[data-touch-surface="virtual"]');
+    const stage = document.querySelector(".game-stage");
+    const stick = document.querySelector(".virtual-stick");
+    const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
+    const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width
+      };
+    };
+    const isVisible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0;
+    };
+    const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
+    const stickRect = stick ? toRect(stick) : null;
+    const buttonRects = buttons.map(toRect);
+    const zoneDetails = zones.map((zone) => {
+      const rect = toRect(zone);
+      return {
+        action: zone.getAttribute("data-action"),
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        clipPath: getComputedStyle(zone).clipPath,
+        rect
+      };
+    });
+    const buttonCenters = buttons.map((button) => {
+      const rect = toRect(button);
+      return {
+        id: button.getAttribute("data-controller-button"),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    });
     return {
-      bottom: Math.max(...rects.map((rect) => rect.bottom)),
-      top: Math.min(...rects.map((rect) => rect.top)),
-      viewportHeight: window.innerHeight
+      buttonCount: buttons.length,
+      buttonCenters,
+      buttonsVisible: buttons.every(isVisible),
+      controlRect: surface ? toRect(surface) : null,
+      dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
+        ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
+        : false,
+      inactiveCount: inactiveButtons.length,
+      inactiveDimmed: inactiveButtons.every((button) => {
+        const style = getComputedStyle(button);
+        return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
+      }),
+      stageRect: stage ? toRect(stage) : null,
+      stickRect,
+      surface: surface?.getAttribute("data-touch-surface") ?? "none",
+      viewportHeight: window.innerHeight,
+      zoneActions: zones.map((zone) => zone.getAttribute("data-action")),
+      zoneDetails,
+      zonesVisible: zones.every(isVisible)
     };
   });
-  if (bottomControlLayout.bottom > bottomControlLayout.viewportHeight - 120) {
-    throw new Error(`Bottom controls are too low for comfortable vertical swipes: ${JSON.stringify(bottomControlLayout)}`);
+  if (
+    controllerLayout.surface !== "virtual" ||
+    JSON.stringify(controllerLayout.zoneActions) !== JSON.stringify(["up", "right", "down", "left"]) ||
+    controllerLayout.buttonCount !== 6
+  ) {
+    throw new Error(`Ponpoko does not use the universal mobile controller: ${JSON.stringify(controllerLayout)}`);
   }
+  if (!controllerLayout.stageRect || !controllerLayout.controlRect || controllerLayout.controlRect.top < controllerLayout.stageRect.bottom - 1) {
+    throw new Error(`Universal controller overlaps gameplay: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (!controllerLayout.zonesVisible || !controllerLayout.buttonsVisible) {
+    throw new Error(`Universal controller controls are not visible: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (controllerLayout.inactiveCount !== 5 || !controllerLayout.inactiveDimmed) {
+    throw new Error(`Ponpoko inactive buttons are not visibly dimmed: ${JSON.stringify(controllerLayout)}`);
+  }
+  assertUniversalControllerGeometry(controllerLayout, "Ponpoko");
   const touchInterceptors = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll('[data-action], [data-touch-zone]')].filter((element) => {
+    const controls = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), .game-topbar [data-action]')].filter((element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       return rect.width > 0 &&
@@ -484,8 +553,13 @@ try {
   const activeBackground = await leftControl.evaluate((element) => getComputedStyle(element).backgroundColor);
   await page.mouse.up();
   if (activeBackground === "rgba(0, 0, 0, 0)" || activeBackground === "transparent") {
-    throw new Error(`Bottom touch control is not visibly tappable: ${activeBackground}`);
+    throw new Error(`Virtual D-pad control is not visibly tappable: ${activeBackground}`);
   }
+  await assertControlFeedback(page, '[data-touch-surface="virtual"] [data-action="left"]', "D-pad left");
+  await assertControlFeedback(page, '[data-touch-surface="virtual"] [data-action="jump"]', "jump button");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
 
   await holdControl(page, "left", 650);
   const leftHoldCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
@@ -501,17 +575,28 @@ try {
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
-  await swipeControl(page, "jump", "up");
-  const jumpSwipeUpCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
-  assertInputPair(jumpSwipeUpCalls, 4, "jump-zone swipe up");
-  assertNoPressedInput(jumpSwipeUpCalls, 0, "jump-zone swipe up");
+  await tapTouchscreenControl(page, "up");
+  const upTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(upTapCalls, 4, "D-pad up tap");
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
-  await swipeControl(page, "jump", "down");
-  const jumpSwipeDownCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
-  assertInputPair(jumpSwipeDownCalls, 5, "jump-zone swipe down");
-  assertNoPressedInput(jumpSwipeDownCalls, 0, "jump-zone swipe down");
+  await tapTouchscreenControl(page, "down");
+  const downTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(downTapCalls, 5, "D-pad down tap");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+  const inactiveBox = await page.locator('[data-touch-surface="virtual"] .virtual-game-button.is-inactive').first().boundingBox();
+  if (!inactiveBox) {
+    throw new Error("Inactive virtual button was not found");
+  }
+  await page.mouse.click(inactiveBox.x + inactiveBox.width / 2, inactiveBox.y + inactiveBox.height / 2);
+  await page.waitForTimeout(120);
+  const inactiveButtonCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  if (inactiveButtonCalls.length > 0) {
+    throw new Error(`Inactive virtual button sent input: ${JSON.stringify(inactiveButtonCalls)}`);
+  }
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
@@ -521,7 +606,7 @@ try {
   await page.waitForFunction(() => {
     const text = document.querySelector("[data-boot-debug]")?.textContent ?? "";
     return text.includes("prep=controls-enabled") &&
-      text.includes("touchZones=3 enabled=true visible=true surface=bottom") &&
+      text.includes("touchZones=4 enabled=true visible=true surface=virtual") &&
       text.includes("touches=") && text.includes("right:down") && text.includes("right:up") &&
       text.includes("inputs=") && text.includes("7:1") && text.includes("7:0");
   }, { timeout: 5_000 });
@@ -621,6 +706,78 @@ async function waitForGameStatus(page, expectedStatus) {
   }, expectedStatus, { timeout: 10_000 });
 }
 
+function assertUniversalControllerGeometry(layout, label) {
+  if (!layout.dpadLeftOfButtons || !layout.stickRect) {
+    throw new Error(`${label} D-pad is not positioned to the left of action buttons: ${JSON.stringify(layout)}`);
+  }
+
+  const stickMidX = layout.stickRect.left + layout.stickRect.width / 2;
+  const stickMidY = layout.stickRect.top + layout.stickRect.height / 2;
+  const zones = new Map(layout.zoneDetails.map((zone) => [zone.action, zone]));
+  const expectedQuadrants = [
+    ["up", (zone) => Math.abs(zone.centerX - stickMidX) <= layout.stickRect.width * 0.12 && zone.centerY < stickMidY],
+    ["right", (zone) => zone.centerX > stickMidX && Math.abs(zone.centerY - stickMidY) <= layout.stickRect.height * 0.12],
+    ["down", (zone) => Math.abs(zone.centerX - stickMidX) <= layout.stickRect.width * 0.12 && zone.centerY > stickMidY],
+    ["left", (zone) => zone.centerX < stickMidX && Math.abs(zone.centerY - stickMidY) <= layout.stickRect.height * 0.12]
+  ];
+
+  for (const [action, matchesQuadrant] of expectedQuadrants) {
+    const zone = zones.get(action);
+    if (!zone || zone.clipPath === "none" || !matchesQuadrant(zone)) {
+      throw new Error(`${label} D-pad slice ${action} is not a clipped wedge in the expected quadrant: ${JSON.stringify(layout)}`);
+    }
+  }
+
+  const buttons = layout.buttonCenters;
+  if (
+    buttons.length !== 6 ||
+    !isRisingDiagonal(buttons.slice(0, 3)) ||
+    !isRisingDiagonal(buttons.slice(3, 6))
+  ) {
+    throw new Error(`${label} action buttons are not arranged in two rising diagonals: ${JSON.stringify(layout)}`);
+  }
+}
+
+function isRisingDiagonal(buttons) {
+  return buttons.length === 3 &&
+    buttons[0].x < buttons[1].x &&
+    buttons[1].x < buttons[2].x &&
+    buttons[0].y > buttons[1].y &&
+    buttons[1].y > buttons[2].y;
+}
+
+async function assertControlFeedback(page, selector, label) {
+  const control = page.locator(selector).first();
+  const box = await control.boundingBox();
+  if (!box) {
+    throw new Error(`${label} control was not found for feedback check`);
+  }
+
+  const before = await control.evaluate(readFeedbackStyle);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  const active = await control.evaluate(readFeedbackStyle);
+  await page.mouse.up();
+
+  if (
+    before.filter === active.filter &&
+    before.boxShadow === active.boxShadow &&
+    before.transform === active.transform
+  ) {
+    throw new Error(`${label} does not show haptic-style visual feedback: ${JSON.stringify({ active, before })}`);
+  }
+}
+
+function readFeedbackStyle(element) {
+  const style = getComputedStyle(element);
+  return {
+    boxShadow: style.boxShadow,
+    filter: style.filter,
+    transform: style.transform
+  };
+}
+
 async function holdControl(page, action, durationMs) {
   const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
   if (!box) {
@@ -630,23 +787,6 @@ async function holdControl(page, action, durationMs) {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(durationMs);
-  await page.mouse.up();
-}
-
-async function swipeControl(page, action, direction) {
-  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
-  if (!box) {
-    throw new Error(`Control ${action} was not found`);
-  }
-
-  const startX = box.x + box.width / 2;
-  const startY = box.y + box.height / 2;
-  const endY = direction === "up" ? startY - 90 : startY + 90;
-
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  await page.mouse.move(startX, endY, { steps: 6 });
-  await page.waitForTimeout(120);
   await page.mouse.up();
 }
 
@@ -672,13 +812,6 @@ function assertMinimumPresses(calls, input, label, minimum) {
   const pressCount = calls.filter((call) => call.input === input && call.pressed === 1).length;
   if (pressCount < minimum) {
     throw new Error(`${label} did not sustain input ${input}; expected ${minimum} presses, got ${pressCount}: ${JSON.stringify(calls)}`);
-  }
-}
-
-function assertNoPressedInput(calls, input, label) {
-  const matching = calls.filter((call) => call.input === input && call.pressed === 1);
-  if (matching.length > 0) {
-    throw new Error(`${label} unexpectedly pressed input ${input}: ${JSON.stringify(calls)}`);
   }
 }
 

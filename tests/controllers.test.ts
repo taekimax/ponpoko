@@ -12,78 +12,56 @@ describe("controller profiles", () => {
     }
   });
 
-  it("keeps Ponpoko on the three-zone jump control with vertical swipe movement", () => {
-    const ponpoko = CATALOG.find((game) => game.id === "ponpoko");
-    const profile = getControllerProfile(ponpoko!);
+  it("uses one universal mobile controller footprint below gameplay for every game", () => {
+    for (const game of CATALOG) {
+      const profile = getControllerProfile(game);
 
-    expect(ponpoko).toBeDefined();
-    expect(ponpoko?.controllerProfile).toBe("platformJump");
-    expect(profile.zonePlacement).toBe("bottom");
-    expect(profile.zones.map((zone) => zone.label)).toEqual([
-      "왼쪽",
-      "점프",
-      "오른쪽"
-    ]);
-    expect(profile.swipe).toEqual({
-      down: "down",
-      up: "up"
-    });
-    expect(profile.hint).toBe("좌/우 홀드 · 가운데 점프 · 위/아래 스와이프");
+      expect(profile.zonePlacement).toBe("virtualStick");
+      expect(profile.swipe).toBeUndefined();
+      expect(profile.zones.map((zone) => zone.action)).toEqual(["up", "right", "down", "left"]);
+      expect(profile.buttons.map((button) => button.id)).toEqual([
+        "button-1",
+        "button-2",
+        "button-3",
+        "button-4",
+        "button-5",
+        "button-6"
+      ]);
+      expect(profile.buttons).toHaveLength(6);
+    }
   });
 
-  it("uses dedicated action buttons for Puzzle Bobble and Super Pang", () => {
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "pbobble")!).buttons.map((button) => button.label)).toEqual([
-      "발사",
-      "와이어"
+  it("dims unused mobile action buttons while keeping six physical buttons visible", () => {
+    const inactiveByGame = new Map([
+      ["ponpoko", [false, true, true, true, true, true]],
+      ["pbobble", [false, false, true, true, true, true]],
+      ["spang", [false, false, true, true, true, true]],
+      ["mslug", [false, false, false, true, true, true]],
+      ["snes_smwk", [false, false, false, false, false, false]],
+      ["sf2ce", [false, false, false, false, false, false]],
+      ["wofj_korean_v1_20", [false, false, false, true, true, true]]
     ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "spang")!).buttons.map((button) => button.label)).toEqual([
-      "발사",
-      "와이어"
-    ]);
+
+    for (const game of CATALOG) {
+      const profile = getControllerProfile(game);
+      const inactive = profile.buttons.map((button) => Boolean((button as { inactive?: boolean }).inactive));
+
+      expect(inactive).toEqual(inactiveByGame.get(game.id));
+    }
   });
 
-  it("uses virtual arcade controls for the new action games", () => {
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "mslug")!).buttons.map((button) => button.action)).toEqual([
-      "button1",
-      "button2",
-      "button3"
-    ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "wofj_korean_v1_20")!).buttons.map((button) => button.action)).toEqual([
-      "button1",
-      "button2",
-      "button3"
-    ]);
-    expect(getControllerProfile(CATALOG.find((game) => game.id === "sf2ce")!).buttons.map((button) => button.action)).toEqual([
-      "button1",
-      "button2",
-      "button3",
-      "button4",
-      "button5",
-      "button6"
-    ]);
-  });
-
-  it("renders a virtual-stick profile for arcade action games", () => {
-    const fightingProfile = getControllerProfile(CATALOG.find((game) => game.id === "sf2ce")!);
-
-    expect(fightingProfile.zonePlacement).toBe("virtualStick");
-    expect(fightingProfile.zones.map((zone) => zone.action)).toEqual(["up", "down", "left", "right"]);
-    expect(fightingProfile.buttons).toHaveLength(6);
-  });
-
-  it("uses SFC-labeled six-button controls for Super Mario World", () => {
+  it("labels Super Mario World with SFC buttons in the shared six-button footprint", () => {
     const profile = getControllerProfile(CATALOG.find((game) => game.id === "snes_smwk")!);
 
-    expect(profile.zonePlacement).toBe("virtualStick");
     expect(profile.buttons.map((button) => button.label)).toEqual(["B", "Y", "A", "X", "L", "R"]);
     expect(getKeyboardControlHints(profile)).toEqual([
       { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
-      { id: "button-b", keys: ["Q"], label: "B" },
-      { id: "button-y", keys: ["W"], label: "Y" },
-      { id: "button-a", keys: ["E"], label: "A" },
-      { id: "button-x", keys: ["A"], label: "X" },
-      { id: "button-l", keys: ["S"], label: "L" },
-      { id: "button-r", keys: ["D"], label: "R" },
+      { id: "button-1", keys: ["Q"], label: "B" },
+      { id: "button-2", keys: ["W"], label: "Y" },
+      { id: "button-3", keys: ["E"], label: "A" },
+      { id: "button-4", keys: ["A"], label: "X" },
+      { id: "button-5", keys: ["S"], label: "L" },
+      { id: "button-6", keys: ["D"], label: "R" },
       { id: "coin", keys: ["5"], label: "동전" },
       { id: "ok", keys: ["O"], label: "OK" },
       { id: "play", keys: ["Enter", "P"], label: "플레이" }

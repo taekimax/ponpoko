@@ -28,7 +28,7 @@ export interface ControlZone {
   id: string;
   label: string;
   action: ControlAction;
-  area: "left" | "center" | "right" | "up" | "down";
+  area: "left" | "right" | "up" | "down";
 }
 
 export interface ControlButton {
@@ -39,11 +39,6 @@ export interface ControlButton {
   tone: "primary" | "secondary" | "danger";
 }
 
-export interface SwipeControls {
-  up: ControlAction;
-  down: ControlAction;
-}
-
 export interface ControllerProfile {
   id: ControllerProfileId;
   label: string;
@@ -51,7 +46,6 @@ export interface ControllerProfile {
   zonePlacement: "stage" | "bottom" | "virtualStick";
   zones: ControlZone[];
   buttons: ControlButton[];
-  swipe?: SwipeControls;
 }
 
 export interface KeyboardControlHint {

@@ -280,6 +280,31 @@ async function assertMobileControllerLayout(page, target, game) {
         style.visibility !== "hidden" &&
         Number.parseFloat(style.opacity || "1") > 0;
     };
+    const buildDpadSectorSamples = (rect) => {
+      const left = rect.left;
+      const right = rect.right;
+      const top = rect.top;
+      const bottom = rect.bottom;
+      const width = rect.width;
+      const height = rect.height;
+      const centerX = left + width / 2;
+      const centerY = top + height / 2;
+
+      return [
+        { action: "up", x: centerX, y: top + height * 0.18 },
+        { action: "up", x: left + width * 0.32, y: top + height * 0.26 },
+        { action: "up", x: right - width * 0.32, y: top + height * 0.26 },
+        { action: "right", x: right - width * 0.18, y: centerY },
+        { action: "right", x: right - width * 0.26, y: top + height * 0.32 },
+        { action: "right", x: right - width * 0.26, y: bottom - height * 0.32 },
+        { action: "down", x: centerX, y: bottom - height * 0.18 },
+        { action: "down", x: left + width * 0.32, y: bottom - height * 0.26 },
+        { action: "down", x: right - width * 0.32, y: bottom - height * 0.26 },
+        { action: "left", x: left + width * 0.18, y: centerY },
+        { action: "left", x: left + width * 0.26, y: top + height * 0.32 },
+        { action: "left", x: left + width * 0.26, y: bottom - height * 0.32 }
+      ];
+    };
     const stageRect = stage ? toRect(stage) : null;
     const controlsRect = controls ? toRect(controls) : null;
     const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
@@ -303,6 +328,18 @@ async function assertMobileControllerLayout(page, target, game) {
         y: rect.top + rect.height / 2
       };
     });
+    const dpadSectorFailures = stickRect === null
+      ? [{ action: "none", hitAction: "none", x: 0, y: 0 }]
+      : buildDpadSectorSamples(stickRect).flatMap((sample) => {
+          const hitAction = document.elementsFromPoint(sample.x, sample.y)
+            .map((element) => element.closest?.("[data-action]"))
+            .find(Boolean)
+            ?.getAttribute("data-action") ?? "none";
+
+          return hitAction === sample.action
+            ? []
+            : [{ ...sample, hitAction }];
+        });
     const hitFailures = activeControls.flatMap((control) => {
       const rect = control.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
@@ -327,6 +364,7 @@ async function assertMobileControllerLayout(page, target, game) {
       buttonsVisible: buttons.every(isVisible),
       controlsRect,
       controlTop: controlsRect?.top ?? null,
+      dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
         : false,
@@ -355,6 +393,9 @@ async function assertMobileControllerLayout(page, target, game) {
   }
   if (layout.inactiveCount !== game.inactiveButtons || !layout.inactiveDimmed) {
     throw new Error(`${target.label} ${game.id} inactive buttons are not dimmed as expected: ${JSON.stringify(layout)}`);
+  }
+  if (layout.dpadSectorFailures.length > 0) {
+    throw new Error(`${target.label} ${game.id} D-pad has dead or mismapped visible sectors: ${JSON.stringify(layout)}`);
   }
   if (layout.activeHitFailureCount > 0) {
     throw new Error(`${target.label} ${game.id} controls are intercepted: ${JSON.stringify(layout)}`);

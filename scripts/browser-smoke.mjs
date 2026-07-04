@@ -107,6 +107,22 @@ try {
   await page.getByText("에뮬레이터 준비 중").waitFor({ timeout: 5_000 });
   await page.getByText(/처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다/).waitFor({ timeout: 5_000 });
   await page.getByText(/경과 \d+초/).waitFor({ timeout: 5_000 });
+  const hiddenControllerState = await page.evaluate(() => {
+    const controls = document.querySelector('[data-touch-surface="virtual"]');
+    const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] button')];
+    return {
+      ariaHidden: controls?.getAttribute("aria-hidden") ?? "missing",
+      disabledCount: buttons.filter((button) => button.disabled).length,
+      totalButtons: buttons.length
+    };
+  });
+  if (
+    hiddenControllerState.ariaHidden !== "true" ||
+    hiddenControllerState.totalButtons !== 10 ||
+    hiddenControllerState.disabledCount !== hiddenControllerState.totalButtons
+  ) {
+    throw new Error(`Hidden boot controller remains focusable: ${JSON.stringify(hiddenControllerState)}`);
+  }
   await page.getByText("ROM 다운로드 완료").waitFor({ timeout: 5_000 });
   await page.getByText("EmulatorJS 로더 확인").waitFor({ timeout: 5_000 });
   await page.locator('[data-boot-step="emulator"]').waitFor({ timeout: 5_000 });
@@ -442,6 +458,31 @@ try {
         style.visibility !== "hidden" &&
         Number.parseFloat(style.opacity || "1") > 0;
     };
+    const buildDpadSectorSamples = (rect) => {
+      const left = rect.left;
+      const right = rect.right;
+      const top = rect.top;
+      const bottom = rect.bottom;
+      const width = rect.width;
+      const height = rect.height;
+      const centerX = left + width / 2;
+      const centerY = top + height / 2;
+
+      return [
+        { action: "up", x: centerX, y: top + height * 0.18 },
+        { action: "up", x: left + width * 0.32, y: top + height * 0.26 },
+        { action: "up", x: right - width * 0.32, y: top + height * 0.26 },
+        { action: "right", x: right - width * 0.18, y: centerY },
+        { action: "right", x: right - width * 0.26, y: top + height * 0.32 },
+        { action: "right", x: right - width * 0.26, y: bottom - height * 0.32 },
+        { action: "down", x: centerX, y: bottom - height * 0.18 },
+        { action: "down", x: left + width * 0.32, y: bottom - height * 0.26 },
+        { action: "down", x: right - width * 0.32, y: bottom - height * 0.26 },
+        { action: "left", x: left + width * 0.18, y: centerY },
+        { action: "left", x: left + width * 0.26, y: top + height * 0.32 },
+        { action: "left", x: left + width * 0.26, y: bottom - height * 0.32 }
+      ];
+    };
     const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
     const stickRect = stick ? toRect(stick) : null;
     const buttonRects = buttons.map(toRect);
@@ -463,11 +504,24 @@ try {
         y: rect.top + rect.height / 2
       };
     });
+    const dpadSectorFailures = stickRect === null
+      ? [{ action: "none", hitAction: "none", x: 0, y: 0 }]
+      : buildDpadSectorSamples(stickRect).flatMap((sample) => {
+          const hitAction = document.elementsFromPoint(sample.x, sample.y)
+            .map((element) => element.closest?.("[data-action]"))
+            .find(Boolean)
+            ?.getAttribute("data-action") ?? "none";
+
+          return hitAction === sample.action
+            ? []
+            : [{ ...sample, hitAction }];
+        });
     return {
       buttonCount: buttons.length,
       buttonCenters,
       buttonsVisible: buttons.every(isVisible),
       controlRect: surface ? toRect(surface) : null,
+      dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
         : false,
@@ -500,6 +554,9 @@ try {
   }
   if (controllerLayout.inactiveCount !== 5 || !controllerLayout.inactiveDimmed) {
     throw new Error(`Ponpoko inactive buttons are not visibly dimmed: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (controllerLayout.dpadSectorFailures.length > 0) {
+    throw new Error(`Ponpoko D-pad has dead or mismapped visible sectors: ${JSON.stringify(controllerLayout)}`);
   }
   assertUniversalControllerGeometry(controllerLayout, "Ponpoko");
   const touchInterceptors = await page.evaluate(() => {

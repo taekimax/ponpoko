@@ -50,7 +50,6 @@ const nativeEmulator = createNativeEmulator();
 const input = new InputRouter(nativeEmulator);
 const AUTOSAVE_INTERVAL_MS = 60_000;
 const APP_BOOT_TIMEOUT_SECONDS = 150;
-const SWIPE_THRESHOLD_PX = 34;
 const TOUCH_POINTER_PREFIX = "touch:";
 const POINTER_PREFIX = "pointer:";
 let state: ViewState = { name: "menu" };
@@ -216,7 +215,7 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
     window.location.href = "/ponpoko/";
   });
 
-  wireControls(app, profile);
+  wireControls(app);
   wireStateSlotControls(app);
 }
 
@@ -253,6 +252,7 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
             type="button"
             data-action="${zone.action}"
             data-touch-zone
+            ${controlsEnabled ? "" : 'aria-disabled="true" disabled'}
             aria-label="${zone.label}"
           ></button>
         `).join("")}
@@ -264,7 +264,7 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
             type="button"
             data-action="${button.action}"
             data-controller-button="${button.id}"
-            ${button.inactive ? 'aria-disabled="true" disabled' : ""}
+            ${button.inactive || !controlsEnabled ? 'aria-disabled="true" disabled' : ""}
           >
             ${button.label}
           </button>
@@ -400,26 +400,17 @@ async function startGame(game: GameEntry): Promise<void> {
 
 interface ActivePointer {
   currentAction: ControlAction;
-  deferred: boolean;
   pressed: boolean;
-  startX: number;
-  startY: number;
 }
 
-function wireControls(root: HTMLElement, profile: ControllerProfile): void {
+function wireControls(root: HTMLElement): void {
   const activePointers = new Map<string, ActivePointer>();
 
   root.querySelectorAll<HTMLElement>("[data-action]").forEach((element) => {
-    if (element instanceof HTMLButtonElement && element.disabled) {
-      return;
-    }
-
     const action = element.dataset.action as ControlAction | undefined;
     if (!action) {
       return;
     }
-
-    const supportsSwipe = element.dataset.swipeZone === "true";
 
     element.addEventListener("pointerdown", (event) => {
       if (event.pointerType === "touch") {
@@ -429,29 +420,9 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
       startControlPress(
         `${POINTER_PREFIX}${event.pointerId}`,
         action,
-        event.clientX,
-        event.clientY,
-        supportsSwipe,
-        profile,
         activePointers
       );
       trySetPointerCapture(element, event.pointerId);
-    });
-
-    element.addEventListener("pointermove", (event) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
-
-      event.preventDefault();
-      moveControlPress(
-        `${POINTER_PREFIX}${event.pointerId}`,
-        event.clientX,
-        event.clientY,
-        supportsSwipe,
-        profile,
-        activePointers
-      );
     });
 
     const release = (event: PointerEvent) => {
@@ -474,10 +445,6 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
           startControlPress(
             `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
             action,
-            touch.clientX,
-            touch.clientY,
-            supportsSwipe,
-            profile,
             activePointers
           );
         }
@@ -489,16 +456,6 @@ function wireControls(root: HTMLElement, profile: ControllerProfile): void {
       "touchmove",
       (event) => {
         event.preventDefault();
-        for (const touch of [...event.changedTouches]) {
-          moveControlPress(
-            `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
-            touch.clientX,
-            touch.clientY,
-            supportsSwipe,
-            profile,
-            activePointers
-          );
-        }
       },
       { passive: false }
     );
@@ -527,66 +484,19 @@ function wireStateSlotControls(root: HTMLElement): void {
 function startControlPress(
   pointerId: string,
   action: ControlAction,
-  clientX: number,
-  clientY: number,
-  supportsSwipe: boolean,
-  profile: ControllerProfile,
   activePointers: Map<string, ActivePointer>
 ): void {
   if (activePointers.has(pointerId)) {
     return;
   }
 
-  const deferred = shouldDeferSwipeOrigin(action, supportsSwipe, profile);
   requestRuntimeAudioUnlock();
   activePointers.set(pointerId, {
     currentAction: action,
-    deferred,
-    pressed: !deferred,
-    startX: clientX,
-    startY: clientY
+    pressed: true
   });
   recordBootDebugTouch(action, "down");
-  if (!deferred) {
-    input.pressControl(action);
-  }
-}
-
-function moveControlPress(
-  pointerId: string,
-  clientX: number,
-  clientY: number,
-  supportsSwipe: boolean,
-  profile: ControllerProfile,
-  activePointers: Map<string, ActivePointer>
-): void {
-  const activePointer = activePointers.get(pointerId);
-  if (!activePointer || !profile.swipe || !supportsSwipe) {
-    return;
-  }
-
-  const deltaX = clientX - activePointer.startX;
-  const deltaY = clientY - activePointer.startY;
-  const verticalDistance = Math.abs(deltaY);
-  const horizontalDistance = Math.abs(deltaX);
-
-  if (verticalDistance < SWIPE_THRESHOLD_PX || verticalDistance <= horizontalDistance) {
-    return;
-  }
-
-  const nextAction = deltaY < 0 ? profile.swipe.up : profile.swipe.down;
-  if (activePointer.currentAction === nextAction) {
-    return;
-  }
-
-  if (activePointer.pressed) {
-    input.releaseControl(activePointer.currentAction);
-  }
-  activePointer.currentAction = nextAction;
-  activePointer.deferred = false;
-  activePointer.pressed = true;
-  recordBootDebugTouch(nextAction, "move");
-  input.pressControl(nextAction);
+  input.pressControl(action);
 }
 
 function endControlPress(pointerId: string, activePointers: Map<string, ActivePointer>): void {
@@ -598,14 +508,8 @@ function endControlPress(pointerId: string, activePointers: Map<string, ActivePo
   recordBootDebugTouch(activePointer.currentAction, "up");
   if (activePointer.pressed) {
     input.releaseControl(activePointer.currentAction);
-  } else {
-    input.tapControl(activePointer.currentAction);
   }
   activePointers.delete(pointerId);
-}
-
-function shouldDeferSwipeOrigin(action: ControlAction, supportsSwipe: boolean, profile: ControllerProfile): boolean {
-  return supportsSwipe && Boolean(profile.swipe) && action === "jump";
 }
 
 function requestRuntimeAudioUnlock(): void {
@@ -759,6 +663,12 @@ function enableRuntimeControls(): void {
     touchControls.classList.add("is-enabled");
     touchControls.setAttribute("aria-hidden", "false");
   });
+  app.querySelectorAll<HTMLButtonElement>("[data-touch-controls] button").forEach((button) => {
+    if (!button.classList.contains("is-inactive")) {
+      button.disabled = false;
+      button.removeAttribute("aria-disabled");
+    }
+  });
   const status = app.querySelector<HTMLElement>("[data-game-status]");
   if (status) {
     status.textContent = "플레이 중";
@@ -855,7 +765,7 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
 }
 
 function getBootTimeoutSeconds(game: GameEntry): number {
-  return game.bootTimeoutSeconds ?? APP_BOOT_TIMEOUT_SECONDS;
+  return Math.min(game.bootTimeoutSeconds ?? APP_BOOT_TIMEOUT_SECONDS, APP_BOOT_TIMEOUT_SECONDS);
 }
 
 function readBootProgressSnapshot(): BootProgressSnapshot {

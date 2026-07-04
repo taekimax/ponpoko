@@ -17,7 +17,7 @@ describe("controller profiles", () => {
       const profile = getControllerProfile(game);
 
       expect(profile.zonePlacement).toBe("virtualStick");
-      expect(profile.swipe).toBeUndefined();
+      expect(Object.hasOwn(profile, "swipe")).toBe(false);
       expect(profile.zones.map((zone) => zone.action)).toEqual(["up", "right", "down", "left"]);
       expect(profile.buttons.map((button) => button.id)).toEqual([
         "button-1",

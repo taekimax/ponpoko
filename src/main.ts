@@ -14,6 +14,7 @@ import {
 } from "./boot-debug";
 import { CATALOG, type GameEntry, getRomPath, getThumbnailPath } from "./catalog";
 import {
+  SPECIAL_CONTROLS,
   type ControlAction,
   type ControllerProfile,
   getControllerProfile,
@@ -207,12 +208,14 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
     </main>
   `;
 
-  app.querySelector<HTMLButtonElement>("[data-back]")?.addEventListener("click", () => {
-    input.releaseAll();
-    void saveActiveAutosave();
-    stopAutosave();
-    nativeEmulator.dispose();
-    window.location.href = "/ponpoko/";
+  app.querySelectorAll<HTMLButtonElement>("[data-back]").forEach((button) => {
+    button.addEventListener("click", () => {
+      input.releaseAll();
+      void saveActiveAutosave();
+      stopAutosave();
+      nativeEmulator.dispose();
+      window.location.href = "/ponpoko/";
+    });
   });
 
   wireControls(app);
@@ -243,34 +246,79 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
       class="virtual-arcade-controls ${controlsEnabled ? "is-enabled" : ""} has-six-buttons"
       data-touch-controls
       data-touch-surface="virtual"
-      aria-hidden="${controlsEnabled ? "false" : "true"}"
+      aria-hidden="false"
     >
-      <div class="virtual-stick" aria-label="가상 스틱">
-        ${directions.map((zone) => `
-          <button
-            class="virtual-stick-button stick-${zone.area}"
-            type="button"
-            data-action="${zone.action}"
-            data-touch-zone
-            ${controlsEnabled ? "" : 'aria-disabled="true" disabled'}
-            aria-label="${zone.label}"
-          ></button>
-        `).join("")}
+      <div class="virtual-primary-controls" aria-hidden="${controlsEnabled ? "false" : "true"}">
+        <div class="virtual-stick" aria-label="가상 스틱">
+          ${directions.map((zone) => `
+            <button
+              class="virtual-stick-button stick-${zone.area}"
+              type="button"
+              data-action="${zone.action}"
+              data-touch-zone
+              ${controlsEnabled ? "" : 'aria-disabled="true" disabled'}
+              aria-label="${zone.label}"
+            ></button>
+          `).join("")}
+        </div>
+        <div class="virtual-game-buttons" aria-label="게임 버튼">
+          ${profile.buttons.map((button) => `
+            <button
+              class="virtual-game-button tone-${button.tone} ${button.inactive ? "is-inactive" : ""}"
+              type="button"
+              data-action="${button.action}"
+              data-controller-button="${button.id}"
+              ${button.inactive || !controlsEnabled ? 'aria-disabled="true" disabled' : ""}
+            >
+              ${button.label}
+            </button>
+          `).join("")}
+        </div>
       </div>
-      <div class="virtual-game-buttons" aria-label="게임 버튼">
-        ${profile.buttons.map((button) => `
-          <button
-            class="virtual-game-button tone-${button.tone} ${button.inactive ? "is-inactive" : ""}"
-            type="button"
-            data-action="${button.action}"
-            data-controller-button="${button.id}"
-            ${button.inactive || !controlsEnabled ? 'aria-disabled="true" disabled' : ""}
-          >
-            ${button.label}
-          </button>
-        `).join("")}
-      </div>
+      ${renderVirtualSpecialControls(controlsEnabled)}
     </div>
+  `;
+}
+
+function renderVirtualSpecialControls(controlsEnabled: boolean): string {
+  return `
+    <div class="virtual-special-buttons" aria-label="특수 버튼">
+      ${SPECIAL_CONTROLS.map((control) => renderVirtualSpecialControl(control, controlsEnabled)).join("")}
+    </div>
+  `;
+}
+
+function renderVirtualSpecialControl(control: (typeof SPECIAL_CONTROLS)[number], controlsEnabled: boolean): string {
+  if (control.type === "menu") {
+    return `
+      <button class="virtual-special-button" type="button" data-back>
+        ${control.label}
+      </button>
+    `;
+  }
+
+  const disabled = controlsEnabled ? "" : 'aria-disabled="true" disabled';
+
+  if (control.type === "saveState") {
+    return `
+      <button class="virtual-special-button" type="button" data-save-state ${disabled}>
+        ${control.label}
+      </button>
+    `;
+  }
+
+  if (control.type === "loadState") {
+    return `
+      <button class="virtual-special-button" type="button" data-load-state ${disabled}>
+        ${control.label}
+      </button>
+    `;
+  }
+
+  return `
+    <button class="virtual-special-button" type="button" data-action="${control.action}" ${disabled}>
+      ${control.label}
+    </button>
   `;
 }
 
@@ -473,11 +521,15 @@ function wireControls(root: HTMLElement): void {
 }
 
 function wireStateSlotControls(root: HTMLElement): void {
-  root.querySelector<HTMLButtonElement>("[data-save-state]")?.addEventListener("click", () => {
-    void saveManualStateSlot();
+  root.querySelectorAll<HTMLButtonElement>("[data-save-state]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void saveManualStateSlot();
+    });
   });
-  root.querySelector<HTMLButtonElement>("[data-load-state]")?.addEventListener("click", () => {
-    void loadManualStateSlot();
+  root.querySelectorAll<HTMLButtonElement>("[data-load-state]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void loadManualStateSlot();
+    });
   });
 }
 
@@ -662,6 +714,9 @@ function enableRuntimeControls(): void {
   app.querySelectorAll<HTMLElement>("[data-touch-controls]").forEach((touchControls) => {
     touchControls.classList.add("is-enabled");
     touchControls.setAttribute("aria-hidden", "false");
+  });
+  app.querySelectorAll<HTMLElement>("[data-touch-controls] .virtual-primary-controls").forEach((primaryControls) => {
+    primaryControls.setAttribute("aria-hidden", "false");
   });
   app.querySelectorAll<HTMLButtonElement>("[data-touch-controls] button").forEach((button) => {
     if (!button.classList.contains("is-inactive")) {

@@ -104,6 +104,36 @@ try {
     throw new Error(`Desktop Chrome did not switch from mobile controls to keyboard controls: ${JSON.stringify(layout)}`);
   }
 
+  await page.setViewportSize({ width: 800, height: 800 });
+  await page.waitForTimeout(200);
+  const narrowDesktopTopbar = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll(".game-topbar .coin-button, .game-topbar .ok-button, .game-topbar .start-button, .game-topbar .save-button, .game-topbar .load-button")];
+    const isVisible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+
+    return {
+      buttonCount: buttons.length,
+      buttonsVisible: buttons.every(isVisible),
+      desktopMedia: matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)").matches,
+      topbarText: document.querySelector(".game-topbar")?.textContent ?? "",
+      viewportWidth: innerWidth
+    };
+  });
+
+  if (
+    narrowDesktopTopbar.desktopMedia ||
+    narrowDesktopTopbar.buttonCount !== 5 ||
+    !narrowDesktopTopbar.buttonsVisible ||
+    !/동전5/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, "")) ||
+    !/OKO/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, "")) ||
+    !/플레이Enter/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, ""))
+  ) {
+    throw new Error(`Narrow desktop topbar service controls are not preserved: ${JSON.stringify(narrowDesktopTopbar)}`);
+  }
+
   await browser.close();
   console.log(`desktop layout smoke ok: ${JSON.stringify(roundLayout(layout))}`);
 } finally {

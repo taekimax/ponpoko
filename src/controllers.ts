@@ -54,6 +54,38 @@ export interface KeyboardControlHint {
   label: string;
 }
 
+export type SpecialControl =
+  | {
+      id: "coin" | "ok" | "start";
+      label: string;
+      type: "control";
+      action: Extract<ControlAction, "coin" | "ok" | "start">;
+    }
+  | {
+      id: "menu";
+      label: string;
+      type: "menu";
+    }
+  | {
+      id: "save";
+      label: string;
+      type: "saveState";
+    }
+  | {
+      id: "load";
+      label: string;
+      type: "loadState";
+    };
+
+export const SPECIAL_CONTROLS: SpecialControl[] = [
+  { id: "menu", label: "메뉴", type: "menu" },
+  { action: "coin", id: "coin", label: "동전", type: "control" },
+  { action: "start", id: "start", label: "시작", type: "control" },
+  { action: "ok", id: "ok", label: "OK", type: "control" },
+  { id: "save", label: "저장", type: "saveState" },
+  { id: "load", label: "불러오기", type: "loadState" }
+];
+
 const UNIVERSAL_DPAD_ZONES: ControlZone[] = [
   { id: "stick-up", label: "위", action: "up", area: "up" },
   { id: "stick-right", label: "오른쪽", action: "right", area: "right" },

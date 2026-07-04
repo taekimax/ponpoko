@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../src/catalog";
-import { CONTROL_PROFILES, getControllerProfile, getKeyboardControlHints } from "../src/controllers";
+import { CONTROL_PROFILES, SPECIAL_CONTROLS, getControllerProfile, getKeyboardControlHints } from "../src/controllers";
 
 describe("controller profiles", () => {
   it("defines a controller profile for every catalog game", () => {
@@ -48,6 +48,17 @@ describe("controller profiles", () => {
 
       expect(inactive).toEqual(inactiveByGame.get(game.id));
     }
+  });
+
+  it("keeps one always-visible mobile special key strip available for every game", () => {
+    expect(SPECIAL_CONTROLS).toEqual([
+      { id: "menu", label: "메뉴", type: "menu" },
+      { action: "coin", id: "coin", label: "동전", type: "control" },
+      { action: "start", id: "start", label: "시작", type: "control" },
+      { action: "ok", id: "ok", label: "OK", type: "control" },
+      { id: "save", label: "저장", type: "saveState" },
+      { id: "load", label: "불러오기", type: "loadState" }
+    ]);
   });
 
   it("labels Super Mario World with SFC buttons in the shared six-button footprint", () => {

@@ -251,14 +251,18 @@ async function assertMobileControllerLayout(page, target, game) {
     return;
   }
 
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.waitForTimeout(150);
+
   const layout = await page.evaluate(() => {
     const stage = document.querySelector(".game-stage");
     const controls = document.querySelector('[data-touch-surface="virtual"]');
     const stick = document.querySelector(".virtual-stick");
     const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
     const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
+    const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
     const activeControls = [...document.querySelectorAll(
-      '[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled)'
+      '[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled)'
     )];
     const toRect = (element) => {
       const rect = element.getBoundingClientRect();
@@ -310,6 +314,11 @@ async function assertMobileControllerLayout(page, target, game) {
     const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
     const stickRect = stick ? toRect(stick) : null;
     const buttonRects = buttons.map(toRect);
+    const specialRects = specialButtons.map(toRect);
+    const primaryBottom = Math.max(
+      stickRect?.bottom ?? 0,
+      ...buttonRects.map((rect) => rect.bottom)
+    );
     const zoneDetails = zones.map((zone) => {
       const rect = toRect(zone);
       return {
@@ -345,14 +354,22 @@ async function assertMobileControllerLayout(page, target, game) {
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
       const topControl = document.elementsFromPoint(x, y)
-        .map((element) => element.closest?.("[data-action]"))
+        .map((element) => element.closest?.("[data-action], [data-back], [data-save-state], [data-load-state]"))
         .find(Boolean);
 
       return topControl === control
         ? []
         : [{
-            action: control.getAttribute("data-action"),
-            topAction: topControl?.getAttribute("data-action") ?? "none"
+            action: control.getAttribute("data-action") ??
+              (control.hasAttribute("data-back") ? "menu" : null) ??
+              (control.hasAttribute("data-save-state") ? "save" : null) ??
+              (control.hasAttribute("data-load-state") ? "load" : null) ??
+              "unknown",
+            topAction: topControl?.getAttribute("data-action") ??
+              (topControl?.hasAttribute("data-back") ? "menu" : null) ??
+              (topControl?.hasAttribute("data-save-state") ? "save" : null) ??
+              (topControl?.hasAttribute("data-load-state") ? "load" : null) ??
+              "none"
           }];
     });
 
@@ -373,23 +390,60 @@ async function assertMobileControllerLayout(page, target, game) {
         const style = getComputedStyle(button);
         return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
       }),
+      scrollFits: (document.scrollingElement?.scrollHeight ?? 0) <= window.innerHeight + 1,
+      specialActions: specialButtons.map((button) => (
+        button.getAttribute("data-action") ??
+        (button.hasAttribute("data-back") ? "menu" : null) ??
+        (button.hasAttribute("data-save-state") ? "save" : null) ??
+        (button.hasAttribute("data-load-state") ? "load" : null) ??
+        "unknown"
+      )),
+      specialBelowPrimary: specialRects.length > 0 && specialRects.every((rect) => rect.top >= primaryBottom - 1),
+      specialCount: specialButtons.length,
+      specialInsideControls: Boolean(controlsRect) && specialRects.every((rect) => (
+        rect.left >= controlsRect.left - 1 &&
+        rect.right <= controlsRect.right + 1 &&
+        rect.top >= controlsRect.top - 1 &&
+        rect.bottom <= controlsRect.bottom + 1
+      )),
+      specialMinHeight: Math.min(...specialRects.map((rect) => rect.height)),
+      specialTextFits: specialButtons.every((button) => button.scrollWidth <= button.clientWidth + 1),
+      specialVisible: specialButtons.every(isVisible),
       stageRect,
       stickRect,
       surface: controls?.getAttribute("data-touch-surface") ?? "none",
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
       zoneCount: zones.length,
       zoneDetails,
       zonesVisible: zones.every(isVisible)
     };
   });
 
-  if (layout.surface !== "virtual" || layout.zoneCount !== 4 || layout.buttonCount !== 6) {
+  if (
+    layout.surface !== "virtual" ||
+    layout.zoneCount !== 4 ||
+    layout.buttonCount !== 6 ||
+    layout.specialCount !== 6 ||
+    JSON.stringify(layout.specialActions) !== JSON.stringify(["menu", "coin", "start", "ok", "save", "load"])
+  ) {
     throw new Error(`${target.label} ${game.id} expected universal virtual controls, got ${JSON.stringify(layout)}`);
   }
-  if (!layout.stageRect || !layout.controlsRect || layout.controlTop < layout.stageRect.bottom - 1) {
+  if (
+    !layout.stageRect ||
+    !layout.controlsRect ||
+    layout.controlTop < layout.stageRect.bottom - 1 ||
+    layout.controlsRect.bottom > layout.viewportHeight + 1 ||
+    layout.controlsRect.left < -1 ||
+    layout.controlsRect.right > layout.viewportWidth + 1
+  ) {
     throw new Error(`${target.label} ${game.id} controls overlap gameplay: ${JSON.stringify(layout)}`);
   }
-  if (!layout.zonesVisible || !layout.buttonsVisible) {
+  if (!layout.zonesVisible || !layout.buttonsVisible || !layout.specialVisible) {
     throw new Error(`${target.label} ${game.id} controls are not visible: ${JSON.stringify(layout)}`);
+  }
+  if (!layout.specialBelowPrimary || !layout.specialInsideControls || layout.specialMinHeight < 44 || !layout.specialTextFits || !layout.scrollFits) {
+    throw new Error(`${target.label} ${game.id} special controls do not fit compact iPhone layout: ${JSON.stringify(layout)}`);
   }
   if (layout.inactiveCount !== game.inactiveButtons || !layout.inactiveDimmed) {
     throw new Error(`${target.label} ${game.id} inactive buttons are not dimmed as expected: ${JSON.stringify(layout)}`);

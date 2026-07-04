@@ -109,19 +109,45 @@ try {
   await page.getByText(/경과 \d+초/).waitFor({ timeout: 5_000 });
   const hiddenControllerState = await page.evaluate(() => {
     const controls = document.querySelector('[data-touch-surface="virtual"]');
-    const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] button')];
+    const primaryControls = document.querySelector('[data-touch-surface="virtual"] .virtual-primary-controls');
+    const primaryButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button')];
+    const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
+    const isVisible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0;
+    };
     return {
       ariaHidden: controls?.getAttribute("aria-hidden") ?? "missing",
-      disabledCount: buttons.filter((button) => button.disabled).length,
-      totalButtons: buttons.length
+      primaryAriaHidden: primaryControls?.getAttribute("aria-hidden") ?? "missing",
+      primaryCount: primaryButtons.length,
+      primaryDisabledCount: primaryButtons.filter((button) => button.disabled).length,
+      primaryOpacity: primaryControls ? getComputedStyle(primaryControls).opacity : "missing",
+      specialCount: specialButtons.length,
+      specialDisabledCount: specialButtons.filter((button) => button.disabled).length,
+      specialLabels: specialButtons.map((button) => button.textContent?.trim() ?? ""),
+      specialMenuEnabled: specialButtons[0] instanceof HTMLButtonElement && !specialButtons[0].disabled,
+      specialVisible: specialButtons.every(isVisible),
+      totalButtons: primaryButtons.length + specialButtons.length
     };
   });
   if (
-    hiddenControllerState.ariaHidden !== "true" ||
-    hiddenControllerState.totalButtons !== 10 ||
-    hiddenControllerState.disabledCount !== hiddenControllerState.totalButtons
+    hiddenControllerState.ariaHidden !== "false" ||
+    hiddenControllerState.primaryAriaHidden !== "true" ||
+    hiddenControllerState.primaryCount !== 10 ||
+    hiddenControllerState.primaryDisabledCount !== 10 ||
+    hiddenControllerState.primaryOpacity !== "0" ||
+    hiddenControllerState.specialCount !== 6 ||
+    JSON.stringify(hiddenControllerState.specialLabels) !== JSON.stringify(["메뉴", "동전", "시작", "OK", "저장", "불러오기"]) ||
+    hiddenControllerState.specialDisabledCount !== 5 ||
+    !hiddenControllerState.specialMenuEnabled ||
+    !hiddenControllerState.specialVisible
   ) {
-    throw new Error(`Hidden boot controller remains focusable: ${JSON.stringify(hiddenControllerState)}`);
+    throw new Error(`Boot controller visibility/disabled state is wrong: ${JSON.stringify(hiddenControllerState)}`);
   }
   await page.getByText("ROM 다운로드 완료").waitFor({ timeout: 5_000 });
   await page.getByText("EmulatorJS 로더 확인").waitFor({ timeout: 5_000 });
@@ -281,7 +307,10 @@ try {
     throw new Error(`Emulator boot overlay did not clear after startup: ${runtimeState.bodyText}`);
   }
 
-  const saveButton = page.locator("[data-save-state]");
+  const saveButton = page.locator('[data-touch-surface="virtual"] [data-save-state]');
+  if (await saveButton.count() !== 1) {
+    throw new Error(`Expected one controller save button, found ${await saveButton.count()}`);
+  }
   await saveButton.waitFor({ timeout: 5_000 });
   const saveButtonState = await saveButton.evaluate((button) => ({
     disabled: button.disabled,
@@ -290,9 +319,12 @@ try {
   if (saveButtonState.disabled || !/저장/.test(saveButtonState.text)) {
     throw new Error(`Manual save button is not ready after gameplay starts: ${JSON.stringify(saveButtonState)}`);
   }
-  await saveButton.click();
+  await tapLocator(page, saveButton, "controller save");
   await waitForGameStatus(page, "저장 완료");
-  const loadButton = page.locator("[data-load-state]");
+  const loadButton = page.locator('[data-touch-surface="virtual"] [data-load-state]');
+  if (await loadButton.count() !== 1) {
+    throw new Error(`Expected one controller load button, found ${await loadButton.count()}`);
+  }
   await loadButton.waitFor({ timeout: 5_000 });
   const loadButtonState = await loadButton.evaluate((button) => ({
     disabled: button.disabled,
@@ -301,7 +333,7 @@ try {
   if (loadButtonState.disabled || !/불러오기/.test(loadButtonState.text)) {
     throw new Error(`Manual load button is not ready after saving: ${JSON.stringify(loadButtonState)}`);
   }
-  await loadButton.click();
+  await tapLocator(page, loadButton, "controller load");
   await waitForGameStatus(page, "불러오기 완료");
 
   const stageScreenshot = await page.locator(".game-stage").screenshot();
@@ -438,6 +470,7 @@ try {
     const stick = document.querySelector(".virtual-stick");
     const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
     const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
+    const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
     const toRect = (element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -486,6 +519,11 @@ try {
     const inactiveButtons = buttons.filter((button) => button.disabled || button.getAttribute("aria-disabled") === "true");
     const stickRect = stick ? toRect(stick) : null;
     const buttonRects = buttons.map(toRect);
+    const specialRects = specialButtons.map(toRect);
+    const primaryBottom = Math.max(
+      stickRect?.bottom ?? 0,
+      ...buttonRects.map((rect) => rect.bottom)
+    );
     const zoneDetails = zones.map((zone) => {
       const rect = toRect(zone);
       return {
@@ -530,6 +568,17 @@ try {
         const style = getComputedStyle(button);
         return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
       }),
+      specialActions: specialButtons.map((button) => (
+        button.getAttribute("data-action") ??
+        (button.hasAttribute("data-back") ? "menu" : null) ??
+        (button.hasAttribute("data-save-state") ? "save" : null) ??
+        (button.hasAttribute("data-load-state") ? "load" : null) ??
+        "unknown"
+      )),
+      specialBelowPrimary: specialRects.length > 0 && specialRects.every((rect) => rect.top >= primaryBottom - 1),
+      specialCount: specialButtons.length,
+      specialEnabled: specialButtons.every((button) => !button.disabled && button.getAttribute("aria-disabled") !== "true"),
+      specialVisible: specialButtons.every(isVisible),
       stageRect: stage ? toRect(stage) : null,
       stickRect,
       surface: surface?.getAttribute("data-touch-surface") ?? "none",
@@ -542,15 +591,20 @@ try {
   if (
     controllerLayout.surface !== "virtual" ||
     JSON.stringify(controllerLayout.zoneActions) !== JSON.stringify(["up", "right", "down", "left"]) ||
-    controllerLayout.buttonCount !== 6
+    controllerLayout.buttonCount !== 6 ||
+    controllerLayout.specialCount !== 6 ||
+    JSON.stringify(controllerLayout.specialActions) !== JSON.stringify(["menu", "coin", "start", "ok", "save", "load"])
   ) {
     throw new Error(`Ponpoko does not use the universal mobile controller: ${JSON.stringify(controllerLayout)}`);
   }
   if (!controllerLayout.stageRect || !controllerLayout.controlRect || controllerLayout.controlRect.top < controllerLayout.stageRect.bottom - 1) {
     throw new Error(`Universal controller overlaps gameplay: ${JSON.stringify(controllerLayout)}`);
   }
-  if (!controllerLayout.zonesVisible || !controllerLayout.buttonsVisible) {
+  if (!controllerLayout.zonesVisible || !controllerLayout.buttonsVisible || !controllerLayout.specialVisible) {
     throw new Error(`Universal controller controls are not visible: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (!controllerLayout.specialEnabled || !controllerLayout.specialBelowPrimary) {
+    throw new Error(`Universal controller special keys are not ready below primary controls: ${JSON.stringify(controllerLayout)}`);
   }
   if (controllerLayout.inactiveCount !== 5 || !controllerLayout.inactiveDimmed) {
     throw new Error(`Ponpoko inactive buttons are not visibly dimmed: ${JSON.stringify(controllerLayout)}`);
@@ -559,8 +613,49 @@ try {
     throw new Error(`Ponpoko D-pad has dead or mismapped visible sectors: ${JSON.stringify(controllerLayout)}`);
   }
   assertUniversalControllerGeometry(controllerLayout, "Ponpoko");
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.waitForTimeout(250);
+  const compactControllerFit = await page.evaluate(() => {
+    const stage = document.querySelector(".game-stage");
+    const controls = document.querySelector('[data-touch-surface="virtual"]');
+    const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width
+      };
+    };
+
+    return {
+      controlsRect: controls ? toRect(controls) : null,
+      scrollHeight: document.scrollingElement?.scrollHeight ?? 0,
+      specialMinHeight: Math.min(...specialButtons.map((button) => button.getBoundingClientRect().height)),
+      specialTextFits: specialButtons.every((button) => button.scrollWidth <= button.clientWidth + 1),
+      stageRect: stage ? toRect(stage) : null,
+      viewportHeight: innerHeight,
+      viewportWidth: innerWidth
+    };
+  });
+  if (
+    !compactControllerFit.stageRect ||
+    !compactControllerFit.controlsRect ||
+    compactControllerFit.controlsRect.top < compactControllerFit.stageRect.bottom - 1 ||
+    compactControllerFit.controlsRect.bottom > compactControllerFit.viewportHeight + 1 ||
+    compactControllerFit.controlsRect.left < -1 ||
+    compactControllerFit.controlsRect.right > compactControllerFit.viewportWidth + 1 ||
+    compactControllerFit.scrollHeight > compactControllerFit.viewportHeight + 1 ||
+    compactControllerFit.specialMinHeight < 44 ||
+    !compactControllerFit.specialTextFits
+  ) {
+    throw new Error(`Compact iPhone controller layout does not fit: ${JSON.stringify(compactControllerFit)}`);
+  }
   const touchInterceptors = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), .game-topbar [data-action]')].filter((element) => {
+    const controls = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled), .game-topbar [data-action]')].filter((element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       return rect.width > 0 &&
@@ -576,7 +671,7 @@ try {
       const y = rect.top + rect.height / 2;
       const stack = document.elementsFromPoint(x, y);
       const top = stack[0] ?? null;
-      const topControl = top?.closest?.("[data-action], [data-touch-zone]") ?? null;
+      const topControl = top?.closest?.("[data-action], [data-touch-zone], [data-back], [data-save-state], [data-load-state]") ?? null;
       const hiddenBlockers = stack.filter((element) => {
         const style = getComputedStyle(element);
         const hidden = element.hasAttribute("hidden") ||
@@ -604,7 +699,11 @@ try {
   if (touchInterceptors.length > 0) {
     throw new Error(`Hidden overlay or unrelated element intercepts controls: ${JSON.stringify(touchInterceptors)}`);
   }
-  await page.mouse.move(leftBox.x + leftBox.width / 2, leftBox.y + leftBox.height / 2);
+  const activeLeftBox = await leftControl.boundingBox();
+  if (!activeLeftBox) {
+    throw new Error("Left control was not found after compact viewport resize");
+  }
+  await page.mouse.move(activeLeftBox.x + activeLeftBox.width / 2, activeLeftBox.y + activeLeftBox.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(100);
   const activeBackground = await leftControl.evaluate((element) => getComputedStyle(element).backgroundColor);
@@ -641,6 +740,25 @@ try {
   await tapTouchscreenControl(page, "down");
   const downTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
   assertInputPair(downTapCalls, 5, "D-pad down tap");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+  await tapTouchscreenControl(page, "coin");
+  const coinTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(coinTapCalls, 2, "controller coin tap");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+  await tapTouchscreenControl(page, "start");
+  const startTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(startTapCalls, 3, "controller start tap");
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+  await tapTouchscreenControl(page, "ok", 380);
+  const okTapCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(okTapCalls, 6, "controller OK left acknowledgement");
+  assertInputPair(okTapCalls, 7, "controller OK right acknowledgement");
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
@@ -706,7 +824,7 @@ try {
     throw new Error(`Touch/keyboard controls scrolled the page: ${JSON.stringify(scrollState)}`);
   }
 
-  await page.getByRole("button", { name: "메뉴" }).click();
+  await tapLocator(page, page.locator('[data-touch-surface="virtual"] [data-back]'), "controller menu");
   await page.waitForURL(baseUrl, { timeout: 10_000 });
   await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
   const menuState = await page.evaluate(() => ({
@@ -836,7 +954,7 @@ function readFeedbackStyle(element) {
 }
 
 async function holdControl(page, action, durationMs) {
-  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
+  const box = await page.locator(`[data-touch-surface="virtual"] [data-action="${action}"]`).first().boundingBox();
   if (!box) {
     throw new Error(`Control ${action} was not found`);
   }
@@ -847,14 +965,24 @@ async function holdControl(page, action, durationMs) {
   await page.mouse.up();
 }
 
-async function tapTouchscreenControl(page, action) {
-  const box = await page.locator(`[data-action="${action}"]`).first().boundingBox();
+async function tapTouchscreenControl(page, action, settleMs = 180) {
+  const box = await page.locator(`[data-touch-surface="virtual"] [data-action="${action}"]`).first().boundingBox();
   if (!box) {
     throw new Error(`Control ${action} was not found`);
   }
 
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForTimeout(180);
+  await page.waitForTimeout(settleMs);
+}
+
+async function tapLocator(page, locator, label, settleMs = 180) {
+  const box = await locator.first().boundingBox();
+  if (!box) {
+    throw new Error(`${label} control was not found`);
+  }
+
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(settleMs);
 }
 
 function assertInputPair(calls, input, label) {

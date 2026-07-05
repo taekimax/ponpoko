@@ -234,10 +234,20 @@ p {
 .load-button {
   min-height: 40px;
   padding: 0 10px;
-  border-radius: 8px;
-  background: #2d2d2d;
+  border: 1px solid rgba(246, 240, 223, 0.16);
+  border-radius: 999px;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.18), rgba(246, 240, 223, 0.06) 46%, rgba(255, 255, 255, 0.1)),
+    #2d2d2d;
   font-size: 13px;
   font-weight: 800;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.2),
+    0 6px 14px rgba(0, 0, 0, 0.18);
+  transition:
+    filter 0.12s ease,
+    transform 0.08s ease;
 }
 
 .coin-button,
@@ -256,16 +266,23 @@ p {
   display: inline-grid;
   place-items: center;
   min-width: 26px;
-  height: 24px;
+  height: 26px;
   padding: 0 7px;
-  border: 1px solid rgba(246, 240, 223, 0.28);
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.2);
-  color: inherit;
+  border: 1px solid rgba(113, 223, 207, 0.3);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.36), transparent 30%),
+    linear-gradient(150deg, rgba(113, 223, 207, 0.24), rgba(239, 200, 74, 0.16)),
+    rgba(17, 17, 17, 0.56);
+  color: #f6f0df;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 11px;
   font-weight: 900;
   line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.2),
+    0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
 .game-topbar kbd {
@@ -273,29 +290,49 @@ p {
 }
 
 .coin-button {
-  background: #2f9c95;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.36), transparent 28%),
+    rgba(47, 156, 149, 0.86);
 }
 
 .ok-button {
-  background: #efc84a;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.5), transparent 28%),
+    rgba(239, 200, 74, 0.9);
   color: #111111;
 }
 
 .start-button {
-  background: #e0524d;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.36), transparent 28%),
+    rgba(224, 82, 77, 0.86);
 }
 
 .save-button {
-  background: #4f65d8;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.34), transparent 28%),
+    rgba(79, 101, 216, 0.86);
 }
 
 .load-button {
-  background: #7c4fd8;
+  background:
+    radial-gradient(circle at 32% 18%, rgba(255, 255, 255, 0.34), transparent 28%),
+    rgba(124, 79, 216, 0.86);
 }
 
 .save-button:disabled,
 .load-button:disabled {
   opacity: 0.52;
+}
+
+.icon-button:active,
+.coin-button:active,
+.ok-button:active,
+.start-button:active,
+.save-button:active,
+.load-button:active {
+  filter: brightness(1.12);
+  transform: translateY(1px);
 }
 
 .game-stage {
@@ -536,7 +573,7 @@ p {
   border-radius: 50%;
   background:
     radial-gradient(circle at 34% 20%, rgba(255, 255, 255, 0.34), transparent 28%),
-    radial-gradient(circle at center, rgba(17, 17, 17, 0.62) 0 24%, transparent 25%),
+    radial-gradient(circle at center, rgba(17, 17, 17, 0.62) 0 11.5%, transparent 12.5%),
     conic-gradient(
       from -45deg,
       rgba(239, 200, 74, 0.34) 0 25%,
@@ -569,7 +606,7 @@ p {
   top: 50%;
   left: 50%;
   z-index: 4;
-  width: 30%;
+  width: 15%;
   aspect-ratio: 1;
   border: 1px solid rgba(246, 240, 223, 0.24);
   border-radius: 50%;
@@ -713,32 +750,32 @@ p {
 }
 
 .virtual-game-button:nth-child(1) {
-  bottom: 4%;
+  top: 50%;
   left: 0;
 }
 
 .virtual-game-button:nth-child(2) {
-  bottom: 34%;
+  top: 34%;
   left: 18%;
 }
 
 .virtual-game-button:nth-child(3) {
-  top: 0;
+  top: 18%;
   left: 36%;
 }
 
 .virtual-game-button:nth-child(4) {
   right: 36%;
-  bottom: 0;
+  top: 50%;
 }
 
 .virtual-game-button:nth-child(5) {
   right: 18%;
-  bottom: 34%;
+  top: 34%;
 }
 
 .virtual-game-button:nth-child(6) {
-  top: 0;
+  top: 18%;
   right: 0;
 }
 
@@ -864,7 +901,7 @@ p {
 
   .virtual-stick {
     background:
-      radial-gradient(circle at center, rgba(17, 17, 17, 0.86) 0 24%, transparent 25%),
+      radial-gradient(circle at center, rgba(17, 17, 17, 0.86) 0 11.5%, transparent 12.5%),
       conic-gradient(
         from -45deg,
         rgba(239, 200, 74, 0.45) 0 25%,
@@ -910,7 +947,7 @@ p {
   .virtual-stick {
     background:
       radial-gradient(circle at 34% 20%, rgba(255, 255, 255, 0.28), transparent 27%),
-      radial-gradient(circle at center, rgba(17, 17, 17, 0.76) 0 24%, transparent 25%),
+      radial-gradient(circle at center, rgba(17, 17, 17, 0.76) 0 11.5%, transparent 12.5%),
       conic-gradient(
         from -45deg,
         rgba(239, 200, 74, 0.42) 0 25%,
@@ -1048,6 +1085,12 @@ p {
   }
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .game-topbar kbd {
+    display: inline-grid;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) and (min-width: 900px) {
   .game-topbar {
     grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto;
@@ -1076,7 +1119,7 @@ p {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 8px;
+    gap: 7px;
     justify-self: center;
     width: min(100%, 900px);
   }
@@ -1085,14 +1128,21 @@ p {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 42px;
-    padding: 8px 10px;
-    border: 1px solid rgba(246, 240, 223, 0.14);
-    border-radius: 8px;
-    background: #242424;
+    min-height: 40px;
+    padding: 7px 10px;
+    border: 1px solid rgba(246, 240, 223, 0.18);
+    border-radius: 18px;
+    background:
+      linear-gradient(150deg, rgba(255, 255, 255, 0.16), rgba(246, 240, 223, 0.06) 48%, rgba(255, 255, 255, 0.1)),
+      rgba(36, 36, 36, 0.86);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -6px 12px rgba(0, 0, 0, 0.2),
+      0 6px 16px rgba(0, 0, 0, 0.18);
   }
 
   .keyboard-hint strong {
+    color: #f6f0df;
     font-size: 12px;
     font-weight: 900;
     white-space: nowrap;
@@ -1100,7 +1150,7 @@ p {
 
   .keyboard-hint span {
     display: inline-flex;
-    gap: 4px;
+    gap: 5px;
     align-items: center;
   }
 }

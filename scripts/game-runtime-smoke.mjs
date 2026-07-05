@@ -9,6 +9,8 @@ const baseUrl = configuredBaseUrl
   : `http://127.0.0.1:${port}/ponpoko/`;
 const appUrl = new URL("?bootDebug=1", baseUrl).href;
 const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
+const requestedGameId = process.env.GAME_RUNTIME_SMOKE_GAME;
+const requestedTargetLabel = process.env.GAME_RUNTIME_SMOKE_TARGET;
 const games = [
   {
     id: "pbobble",
@@ -50,7 +52,7 @@ const games = [
     ],
     minFrame: 120,
     romFile: "mslug.zip",
-    romVersion: "de703dd6573d84c42fa867ca09605b2ef5182d393f725ee41beadd9112574772",
+    romVersion: "44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9",
     title: "메탈 슬러그",
     videoHeight: 224,
     videoWidth: 304
@@ -104,7 +106,11 @@ const games = [
     videoHeight: 224,
     videoWidth: 384
   }
-];
+].filter((game) => !requestedGameId || game.id === requestedGameId);
+
+if (requestedGameId && games.length === 0) {
+  throw new Error(`Unknown GAME_RUNTIME_SMOKE_GAME ${requestedGameId}`);
+}
 
 const server = configuredBaseUrl
   ? null
@@ -114,17 +120,16 @@ const server = configuredBaseUrl
 
 try {
   await waitForServer(baseUrl);
-  const targets = [
+  const targetConfigs = [
     {
-      browser: await chromium.launch({ headless: true }),
       contextOptions: {
         viewport: { width: 1280, height: 800 }
       },
       inputMode: "keyboard",
-      label: "desktop Chromium"
+      label: "desktop Chromium",
+      launch: () => chromium.launch({ headless: true })
     },
     {
-      browser: await webkit.launch({ headless: true }),
       contextOptions: {
         viewport: { width: 390, height: 844 },
         isMobile: true,
@@ -133,11 +138,25 @@ try {
           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
       },
       inputMode: "pointer",
-      label: "mobile WebKit"
+      label: "mobile WebKit",
+      launch: () => webkit.launch({ headless: true })
     }
-  ];
+  ].filter((target) => !requestedTargetLabel || target.label.includes(requestedTargetLabel));
 
+  if (requestedTargetLabel && targetConfigs.length === 0) {
+    throw new Error(`Unknown GAME_RUNTIME_SMOKE_TARGET ${requestedTargetLabel}`);
+  }
+
+  const targets = [];
   try {
+    for (const targetConfig of targetConfigs) {
+      targets.push({
+        browser: await targetConfig.launch(),
+        contextOptions: targetConfig.contextOptions,
+        inputMode: targetConfig.inputMode,
+        label: targetConfig.label
+      });
+    }
     for (const target of targets) {
       for (const game of games) {
         await verifyGame(target, game);
@@ -337,6 +356,10 @@ async function assertMobileControllerLayout(page, target, game) {
         y: rect.top + rect.height / 2
       };
     });
+    const buttonVerticalSpan = buttonCenters.length > 0
+      ? Math.max(...buttonCenters.map((button) => button.y)) - Math.min(...buttonCenters.map((button) => button.y))
+      : 0;
+    const dpadCenterWidth = stick ? Number.parseFloat(getComputedStyle(stick, "::after").width) : 0;
     const dpadSectorFailures = stickRect === null
       ? [{ action: "none", hitAction: "none", x: 0, y: 0 }]
       : buildDpadSectorSamples(stickRect).flatMap((sample) => {
@@ -378,9 +401,11 @@ async function assertMobileControllerLayout(page, target, game) {
       activeHitFailures: hitFailures,
       buttonCount: buttons.length,
       buttonCenters,
+      buttonVerticalSpanRatio: stickRect ? buttonVerticalSpan / stickRect.height : 1,
       buttonsVisible: buttons.every(isVisible),
       controlsRect,
       controlTop: controlsRect?.top ?? null,
+      dpadCenterRatio: stickRect ? dpadCenterWidth / stickRect.width : 1,
       dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
@@ -453,6 +478,12 @@ async function assertMobileControllerLayout(page, target, game) {
   }
   if (layout.activeHitFailureCount > 0) {
     throw new Error(`${target.label} ${game.id} controls are intercepted: ${JSON.stringify(layout)}`);
+  }
+  if (layout.buttonVerticalSpanRatio > 0.45) {
+    throw new Error(`${target.label} ${game.id} action buttons are too steep for short thumb travel: ${JSON.stringify(layout)}`);
+  }
+  if (layout.dpadCenterRatio > 0.18) {
+    throw new Error(`${target.label} ${game.id} D-pad center circle is too large for sensitive sectors: ${JSON.stringify(layout)}`);
   }
   assertUniversalControllerGeometry(layout, `${target.label} ${game.id}`);
   await assertControlFeedback(page, '[data-touch-surface="virtual"] [data-action="left"]', `${target.label} ${game.id} D-pad left`);

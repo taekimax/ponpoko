@@ -3,6 +3,7 @@ import {
   getBootProgressCopy,
   getBootProgressSnapshot,
   shouldEnableRuntimeControls,
+  shouldRequestRuntimePreparation,
   shouldStopBoot
 } from "../src/boot-progress";
 
@@ -120,5 +121,24 @@ describe("emulator boot progress", () => {
     expect(shouldEnableRuntimeControls(activeFrameSnapshot)).toBe(true);
     expect(shouldEnableRuntimeControls(startedSnapshot)).toBe(false);
     expect(shouldEnableRuntimeControls(waitingSnapshot)).toBe(false);
+  });
+
+  it("requests runtime preparation after the first frame so startup prompts can be acknowledged", () => {
+    const firstFrameSnapshot = getBootProgressSnapshot(
+      { hasCanvas: true, hasLoaderScript: true },
+      {
+        gameManager: {
+          getFrameNum: () => 4
+        },
+        started: false
+      }
+    );
+    const waitingSnapshot = getBootProgressSnapshot(
+      { hasCanvas: true, hasLoaderScript: true },
+      { started: false }
+    );
+
+    expect(shouldRequestRuntimePreparation(firstFrameSnapshot)).toBe(true);
+    expect(shouldRequestRuntimePreparation(waitingSnapshot)).toBe(false);
   });
 });

@@ -33,9 +33,13 @@ try {
     const stage = document.querySelector(".game-stage");
     const controls = document.querySelector(".keyboard-control-panel") ?? document.querySelector(".control-panel");
     const keyboardPanel = document.querySelector(".keyboard-control-panel");
+    const keyboardHint = keyboardPanel?.querySelector(".keyboard-hint");
+    const keyboardKeycap = keyboardPanel?.querySelector("kbd");
     const mobilePanel = document.querySelector(".mobile-control-panel");
     const stageTouchZones = document.querySelector(".touch-zones-stage");
+    const topbarKeycap = document.querySelector(".game-topbar kbd");
     const virtualArcadeControls = document.querySelector(".virtual-arcade-controls");
+    const topbar = document.querySelector(".game-topbar");
     if (!canvas || !stage || !controls) {
       return null;
     }
@@ -48,15 +52,46 @@ try {
       const rect = element.getBoundingClientRect();
       return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
     };
+    const readVisibleText = (root) => {
+      const parts = [];
+      const visit = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent ?? "";
+          if (text.trim()) {
+            parts.push(text);
+          }
+          return;
+        }
+        if (!(node instanceof Element) || !isVisible(node)) {
+          return;
+        }
+        for (const child of node.childNodes) {
+          visit(child);
+        }
+      };
+      if (root) {
+        visit(root);
+      }
+      return parts.join("");
+    };
     const canvasRect = canvas.getBoundingClientRect();
     const stageRect = stage.getBoundingClientRect();
     const controlsRect = controls.getBoundingClientRect();
+    const keyboardHintStyle = keyboardHint ? getComputedStyle(keyboardHint) : null;
+    const keyboardKeycapStyle = keyboardKeycap ? getComputedStyle(keyboardKeycap) : null;
+    const topbarKeycapStyle = topbarKeycap ? getComputedStyle(topbarKeycap) : null;
     return {
       canvasHeight: canvasRect.height,
       canvasRatio: canvasRect.width / canvasRect.height,
       canvasWidth: canvasRect.width,
       desktopMedia: matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)").matches,
       expectedRatio: 288 / 224,
+      keycapBoxShadow: keyboardKeycapStyle?.boxShadow ?? "missing",
+      keycapHeight: keyboardKeycap ? keyboardKeycap.getBoundingClientRect().height : 0,
+      keycapRadius: keyboardKeycapStyle ? Number.parseFloat(keyboardKeycapStyle.borderTopLeftRadius) : 0,
+      keyboardHintBoxShadow: keyboardHintStyle?.boxShadow ?? "missing",
+      keyboardHintHeight: keyboardHint ? keyboardHint.getBoundingClientRect().height : 0,
+      keyboardHintRadius: keyboardHintStyle ? Number.parseFloat(keyboardHintStyle.borderTopLeftRadius) : 0,
       keyboardText: keyboardPanel?.textContent ?? "",
       keyboardVisible: isVisible(keyboardPanel),
       mobilePanelVisible: isVisible(mobilePanel),
@@ -64,7 +99,9 @@ try {
       stageRatio: stageRect.width / stageRect.height,
       stageWidth: stageRect.width,
       stageTouchZonesVisible: isVisible(stageTouchZones),
-      topbarText: document.querySelector(".game-topbar")?.textContent ?? "",
+      topbarText: topbar?.textContent ?? "",
+      topbarVisibleText: readVisibleText(topbar),
+      topbarKeycapRadius: topbarKeycapStyle ? Number.parseFloat(topbarKeycapStyle.borderTopLeftRadius) : 0,
       controlsTop: controlsRect.top,
       virtualArcadeControlsVisible: isVisible(virtualArcadeControls),
       viewportHeight: innerHeight,
@@ -97,11 +134,22 @@ try {
     !/동전/.test(layout.keyboardText) ||
     !/OK/.test(layout.keyboardText) ||
     !/Enter/.test(layout.keyboardText) ||
-    !/동전5/.test(layout.topbarText.replace(/\s/g, "")) ||
-    !/OKO/.test(layout.topbarText.replace(/\s/g, "")) ||
-    !/플레이Enter/.test(layout.topbarText.replace(/\s/g, ""))
+    !/동전5/.test(layout.topbarVisibleText.replace(/\s/g, "")) ||
+    !/OKO/.test(layout.topbarVisibleText.replace(/\s/g, "")) ||
+    !/플레이Enter/.test(layout.topbarVisibleText.replace(/\s/g, ""))
   ) {
     throw new Error(`Desktop Chrome did not switch from mobile controls to keyboard controls: ${JSON.stringify(layout)}`);
+  }
+  if (
+    layout.keyboardHintHeight > 48 ||
+    layout.keyboardHintRadius < 16 ||
+    layout.keycapHeight < 26 ||
+    layout.keycapRadius < 12 ||
+    layout.topbarKeycapRadius < 12 ||
+    layout.keyboardHintBoxShadow === "none" ||
+    layout.keycapBoxShadow === "none"
+  ) {
+    throw new Error(`Desktop keyboard guide does not match liquid controller styling: ${JSON.stringify(layout)}`);
   }
 
   await page.setViewportSize({ width: 800, height: 800 });
@@ -113,12 +161,36 @@ try {
       const rect = element.getBoundingClientRect();
       return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
     };
+    const readVisibleText = (root) => {
+      const parts = [];
+      const visit = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent ?? "";
+          if (text.trim()) {
+            parts.push(text);
+          }
+          return;
+        }
+        if (!(node instanceof Element) || !isVisible(node)) {
+          return;
+        }
+        for (const child of node.childNodes) {
+          visit(child);
+        }
+      };
+      if (root) {
+        visit(root);
+      }
+      return parts.join("");
+    };
+    const topbar = document.querySelector(".game-topbar");
 
     return {
       buttonCount: buttons.length,
       buttonsVisible: buttons.every(isVisible),
       desktopMedia: matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)").matches,
-      topbarText: document.querySelector(".game-topbar")?.textContent ?? "",
+      topbarText: topbar?.textContent ?? "",
+      topbarVisibleText: readVisibleText(topbar),
       viewportWidth: innerWidth
     };
   });
@@ -127,9 +199,9 @@ try {
     narrowDesktopTopbar.desktopMedia ||
     narrowDesktopTopbar.buttonCount !== 5 ||
     !narrowDesktopTopbar.buttonsVisible ||
-    !/동전5/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, "")) ||
-    !/OKO/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, "")) ||
-    !/플레이Enter/.test(narrowDesktopTopbar.topbarText.replace(/\s/g, ""))
+    !/동전5/.test(narrowDesktopTopbar.topbarVisibleText.replace(/\s/g, "")) ||
+    !/OKO/.test(narrowDesktopTopbar.topbarVisibleText.replace(/\s/g, "")) ||
+    !/플레이Enter/.test(narrowDesktopTopbar.topbarVisibleText.replace(/\s/g, ""))
   ) {
     throw new Error(`Narrow desktop topbar service controls are not preserved: ${JSON.stringify(narrowDesktopTopbar)}`);
   }

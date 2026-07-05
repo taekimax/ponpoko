@@ -1,7 +1,12 @@
 import {
+  resolveAutosaveStartDecision,
+  shouldRestoreAutosave,
+  type AutosaveStartMode
+} from "./autosave-start";
+import {
   getBootProgressCopy,
   getBootProgressSnapshot as createBootProgressSnapshot,
-  shouldEnableRuntimeControls,
+  shouldRequestRuntimePreparation,
   shouldStopBoot,
   type BootProgressSnapshot
 } from "./boot-progress";
@@ -36,15 +41,17 @@ import {
   loadAutosaveState,
   loadManualState,
   saveAutosaveState,
-  saveManualState
+  saveManualState,
+  type AutosaveRecord
 } from "./state-storage";
 import "./styles.css";
 
 type ViewState =
   | { name: "menu" }
-  | { name: "loading"; game: GameEntry; progress: number; message: string }
-  | { name: "game"; game: GameEntry; controlsEnabled: boolean; status: string }
-  | { name: "error"; game: GameEntry; message: string };
+  | { autosave: AutosaveRecord; game: GameEntry; name: "autosave-choice" }
+  | { game: GameEntry; message: string; name: "loading"; progress: number; startMode: AutosaveStartMode }
+  | { controlsEnabled: boolean; game: GameEntry; name: "game"; startMode: AutosaveStartMode; status: string }
+  | { game: GameEntry; message: string; name: "error"; startMode: AutosaveStartMode };
 
 declare global {
   interface Window {
@@ -102,6 +109,11 @@ function render(): void {
     return;
   }
 
+  if (state.name === "autosave-choice") {
+    renderAutosaveChoice(state.game, state.autosave);
+    return;
+  }
+
   if (state.name === "loading") {
     renderLoading(state.game, state.progress, state.message);
     return;
@@ -112,7 +124,7 @@ function render(): void {
     return;
   }
 
-  renderError(state.game, state.message);
+  renderError(state.game, state.message, state.startMode);
 }
 
 function renderMenu(): void {
@@ -140,10 +152,23 @@ function renderMenu(): void {
     button.addEventListener("click", () => {
       const game = CATALOG.find((candidate) => candidate.id === button.dataset.gameId);
       if (game) {
-        void startGame(game);
+        void handleGameSelection(game);
       }
     });
   });
+}
+
+async function handleGameSelection(game: GameEntry): Promise<void> {
+  input.releaseAll();
+  void saveActiveAutosave();
+
+  const decision = await resolveAutosaveStartDecision(game.id, loadAutosaveState);
+  if (decision.kind === "prompt") {
+    setState({ autosave: decision.autosave, game, name: "autosave-choice" });
+    return;
+  }
+
+  await startGame(game, decision.mode);
 }
 
 function renderGameCard(game: GameEntry): string {
@@ -187,6 +212,50 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
       </section>
     </main>
   `;
+}
+
+function renderAutosaveChoice(game: GameEntry, autosave: AutosaveRecord): void {
+  stopAutosave();
+  clearDeferredRomCacheSaves();
+  stopBootProgressMonitor();
+  stopEmulatorChromeSuppression();
+  stopBootDebugPanel();
+  stopManualStateStatusTimer();
+  input.releaseAll();
+  app.innerHTML = `
+    <main class="app-shell play-shell">
+      <section class="error-panel autosave-choice-panel" data-autosave-choice>
+        <p class="eyebrow">${game.titleKo}</p>
+        <h1>저장된 진행을 불러올까요?</h1>
+        <p>이전에 자동 저장된 지점이 있습니다.</p>
+        <p data-autosave-saved-at>${formatAutosaveSavedAt(autosave.savedAt)}</p>
+        <div class="error-actions autosave-choice-actions">
+          <button class="primary-action" type="button" data-continue-autosave>이어하기</button>
+          <button class="secondary-action" type="button" data-start-new>새로 시작</button>
+          <button class="secondary-action" type="button" data-cancel-autosave-choice>메뉴로</button>
+        </div>
+      </section>
+    </main>
+  `;
+
+  app.querySelector<HTMLButtonElement>("[data-continue-autosave]")?.addEventListener("click", () => {
+    void startGame(game, { autosave, kind: "autosave" });
+  });
+  app.querySelector<HTMLButtonElement>("[data-start-new]")?.addEventListener("click", () => {
+    void startGame(game, { kind: "new" });
+  });
+  app.querySelector<HTMLButtonElement>("[data-cancel-autosave-choice]")?.addEventListener("click", () => {
+    setState({ name: "menu" });
+  });
+}
+
+function formatAutosaveSavedAt(savedAt: number): string {
+  const savedDate = new Date(savedAt);
+  if (Number.isNaN(savedDate.getTime())) {
+    return "자동 저장 지점이 있습니다.";
+  }
+
+  return `자동 저장: ${savedDate.toLocaleString("ko-KR")}`;
 }
 
 function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): void {
@@ -372,7 +441,7 @@ function renderBootDebugPanel(): string {
   `;
 }
 
-function renderError(game: GameEntry, message: string): void {
+function renderError(game: GameEntry, message: string, startMode: AutosaveStartMode): void {
   stopAutosave();
   clearDeferredRomCacheSaves();
   stopBootProgressMonitor();
@@ -393,7 +462,7 @@ function renderError(game: GameEntry, message: string): void {
   `;
 
   app.querySelector<HTMLButtonElement>("[data-retry]")?.addEventListener("click", () => {
-    void startGame(game);
+    void startGame(game, startMode);
   });
   app.querySelector<HTMLButtonElement>("[data-menu]")?.addEventListener("click", () => {
     input.releaseAll();
@@ -404,7 +473,7 @@ function renderError(game: GameEntry, message: string): void {
   });
 }
 
-async function startGame(game: GameEntry): Promise<void> {
+async function startGame(game: GameEntry, startMode: AutosaveStartMode): Promise<void> {
   input.releaseAll();
   void saveActiveAutosave();
   stopAutosave();
@@ -421,7 +490,7 @@ async function startGame(game: GameEntry): Promise<void> {
   runtimePrepStatus = "pending";
   await unlockRuntimeAudio();
   await requestWakeLock();
-  setState({ name: "loading", game, progress: 0, message: "ROM 파일을 준비합니다." });
+  setState({ game, message: "ROM 파일을 준비합니다.", name: "loading", progress: 0, startMode });
   void warmUpEmulatorAssets(game.core);
 
   try {
@@ -430,10 +499,16 @@ async function startGame(game: GameEntry): Promise<void> {
       cacheKey: `${game.romFile}:${game.romVersion}`,
       cacheSaveScheduler: queueDeferredRomCacheSave,
       onProgress: (progress) => {
-        setState({ name: "loading", game, progress, message: "ROM 파일을 가져오는 중입니다." });
+        setState({ game, message: "ROM 파일을 가져오는 중입니다.", name: "loading", progress, startMode });
       }
     });
-    setState({ name: "game", game, controlsEnabled: false, status: "다운로드 완료. 에뮬레이터를 시작합니다." });
+    setState({
+      controlsEnabled: false,
+      game,
+      name: "game",
+      startMode,
+      status: "다운로드 완료. 에뮬레이터를 시작합니다."
+    });
     const gameMount = app.querySelector<HTMLElement>("#game");
     if (gameMount) {
       nativeEmulator.attach(gameMount);
@@ -455,6 +530,7 @@ async function startGame(game: GameEntry): Promise<void> {
     setState({
       name: "error",
       game,
+      startMode,
       message: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다."
     });
   }
@@ -628,9 +704,13 @@ async function finalizeRuntimeControls(): Promise<void> {
   runtimeControlsFinalizing = true;
   runtimePrepStatus = "finalizing";
   try {
-    const prepared = await prepareRuntimeControls(state.game);
+    const prepared = await prepareRuntimeControls(state.game, state.startMode);
     if (!prepared) {
       runtimePrepStatus = "failed";
+      if (state.name === "game" && shouldRestoreAutosave(state.startMode)) {
+        renderAutosaveRestoreFailure(state.game, state.startMode);
+        return;
+      }
       const snapshot = readBootProgressSnapshot();
       if (shouldEnableControlsAfterPrepFailure(snapshot)) {
         enableRuntimeControls();
@@ -645,7 +725,7 @@ async function finalizeRuntimeControls(): Promise<void> {
   }
 }
 
-async function prepareRuntimeControls(game: GameEntry): Promise<boolean> {
+async function prepareRuntimeControls(game: GameEntry, startMode: AutosaveStartMode): Promise<boolean> {
   const inputReady = await waitForRuntimeInputReady(10_000);
   if (!inputReady) {
     return false;
@@ -655,8 +735,11 @@ async function prepareRuntimeControls(game: GameEntry): Promise<boolean> {
   await acknowledgeMameCopyrightWarning();
   runtimePrepStatus = "warning-ack";
 
-  const autosaveRestored = await restoreAutosaveState(game);
-  if (autosaveRestored) {
+  if (shouldRestoreAutosave(startMode)) {
+    const autosaveRestored = await restoreSelectedAutosaveState(startMode.autosave);
+    if (!autosaveRestored) {
+      return false;
+    }
     runtimeAutosaveRestored = true;
     runtimePrepStatus = "state-reloaded";
     return true;
@@ -679,7 +762,7 @@ async function waitForRuntimeInputReady(timeoutMs: number): Promise<boolean> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
-    if (nativeEmulator.isInputReady(120)) {
+    if (nativeEmulator.isInputReady(1)) {
       return true;
     }
 
@@ -695,12 +778,7 @@ async function acknowledgeMameCopyrightWarning(): Promise<void> {
   input.releaseAll();
 }
 
-async function restoreAutosaveState(game: GameEntry): Promise<boolean> {
-  const autosave = await loadAutosaveState(game.id);
-  if (!autosave) {
-    return false;
-  }
-
+async function restoreSelectedAutosaveState(autosave: AutosaveRecord): Promise<boolean> {
   const restored = await nativeEmulator.loadState(autosave.state);
   if (restored) {
     await waitForDelay(150);
@@ -828,7 +906,7 @@ function updateBootProgress(): void {
   const snapshot = readBootProgressSnapshot();
   const copy = getBootProgressCopy(snapshot, elapsedSeconds);
 
-  if (shouldEnableRuntimeControls(snapshot)) {
+  if (shouldRequestRuntimePreparation(snapshot)) {
     requestRuntimeControls();
     return;
   }
@@ -854,10 +932,11 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
   if (state.name !== "game") {
     return;
   }
+  const failedGameState = state;
 
   const message = snapshot.failed
     ? "에뮬레이터가 시작 실패를 보고했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
-    : `에뮬레이터 첫 화면이 ${getBootTimeoutSeconds(state.game)}초 안에 시작되지 않았습니다. iPhone Safari에서 탭을 새로고침하거나 다시 시도해 주세요.`;
+    : `에뮬레이터 첫 화면이 ${getBootTimeoutSeconds(failedGameState.game)}초 안에 시작되지 않았습니다. iPhone Safari에서 탭을 새로고침하거나 다시 시도해 주세요.`;
 
   releaseWakeLock();
   input.releaseAll();
@@ -867,8 +946,24 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
   stopBootDebugPanel();
   setState({
     name: "error",
-    game: state.game,
+    game: failedGameState.game,
+    startMode: failedGameState.startMode,
     message
+  });
+}
+
+function renderAutosaveRestoreFailure(game: GameEntry, startMode: AutosaveStartMode): void {
+  releaseWakeLock();
+  input.releaseAll();
+  nativeEmulator.dispose();
+  stopBootProgressMonitor();
+  stopEmulatorChromeSuppression();
+  stopBootDebugPanel();
+  setState({
+    game,
+    message: "자동 저장을 불러오지 못했습니다. 다시 시도하거나 메뉴에서 새로 시작해 주세요.",
+    name: "error",
+    startMode
   });
 }
 

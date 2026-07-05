@@ -11,7 +11,7 @@ export const METAL_SLUG_GAME: GameEntry = {
   core: "mame2003_plus",
   rotation: 0,
   romFile: "mslug.zip",
-  romVersion: "de703dd6573d84c42fa867ca09605b2ef5182d393f725ee41beadd9112574772",
+  romVersion: "44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9",
   thumbnailFile: "mslug.jpg",
   sourcePageUrl: "https://github.com/taekimax/ponpoko",
   controllerProfile: "arcadeThreeButton",

@@ -25,6 +25,7 @@ const IPHONE_SAFARI_BLOCKING_WARNING =
   "처음 실행은 잠시 멈춘 것처럼 보일 수 있습니다.";
 const BOOT_TIMEOUT_SECONDS = 150;
 const ACTIVE_GAMEPLAY_FRAME_THRESHOLD = 60;
+const RUNTIME_PREP_FRAME_THRESHOLD = 1;
 
 export interface BootProgressOptions {
   timeoutSeconds?: number;
@@ -109,6 +110,10 @@ export function shouldStopBoot(
 
 export function shouldEnableRuntimeControls(snapshot: BootProgressSnapshot): boolean {
   return !snapshot.failed && snapshot.frame >= ACTIVE_GAMEPLAY_FRAME_THRESHOLD;
+}
+
+export function shouldRequestRuntimePreparation(snapshot: BootProgressSnapshot): boolean {
+  return !snapshot.failed && snapshot.frame >= RUNTIME_PREP_FRAME_THRESHOLD;
 }
 
 function readFrameNumber(emulator: BootProgressRuntime | undefined): number {

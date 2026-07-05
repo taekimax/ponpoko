@@ -56,6 +56,7 @@ try {
     const originalFetch = window.fetch.bind(window);
     window.__smokeFetchCalls = [];
     window.__smokeAllInputCalls = [];
+    window.__smokeLoadStateCalls = [];
     window.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : new URL(String(input), window.location.href).href;
       const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
@@ -70,6 +71,34 @@ try {
       return originalFetch(input, init);
     };
 
+    window.__smokeSummarizeBytes = (state) => {
+      const bytes = state instanceof Uint8Array ? state : new Uint8Array(state);
+      let checksum = 2166136261;
+      for (const byte of bytes) {
+        checksum ^= byte;
+        checksum = Math.imul(checksum, 16777619) >>> 0;
+      }
+
+      return {
+        byteLength: bytes.byteLength,
+        checksum,
+        prefix: Array.from(bytes.slice(0, 24)),
+        suffix: Array.from(bytes.slice(Math.max(0, bytes.byteLength - 24)))
+      };
+    };
+    window.__smokePatchStateCapture = () => {
+      const gameManager = window.EJS_emulator?.gameManager;
+      if (!gameManager?.loadState || gameManager.__smokeLoadStatePatched) {
+        return;
+      }
+
+      const original = gameManager.loadState.bind(gameManager);
+      gameManager.__smokeLoadStatePatched = true;
+      gameManager.loadState = (state) => {
+        window.__smokeLoadStateCalls?.push(window.__smokeSummarizeBytes(state));
+        return original(state);
+      };
+    };
     window.__smokePatchInputCapture = () => {
       const gameManager = window.EJS_emulator?.gameManager;
       if (!gameManager?.simulateInput || gameManager.__smokeInputPatched) {
@@ -85,7 +114,10 @@ try {
         original(player, input, pressed);
       };
     };
-    window.setInterval(() => window.__smokePatchInputCapture?.(), 50);
+    window.setInterval(() => {
+      window.__smokePatchInputCapture?.();
+      window.__smokePatchStateCapture?.();
+    }, 50);
   }, { throwPointerCapture });
 
   await page.goto(appUrl, { waitUntil: "networkidle" });
@@ -97,7 +129,20 @@ try {
   if (await intro.count()) {
     await intro.click();
   }
+  await seedAutosaveState(page, "ponpoko");
   await page.locator('[data-game-id="ponpoko"]').click();
+  await page.locator("[data-autosave-choice]").waitFor({ timeout: 5_000 });
+  const preChoiceRomRequests = await page.evaluate(() => (
+    window.__smokeFetchCalls ?? []
+  ).filter((call) => call.url === window.__expectedSmokeRomUrl).length);
+  if (preChoiceRomRequests !== 0) {
+    throw new Error(`Autosave prompt started ROM loading before the user chose a start mode: ${preChoiceRomRequests}`);
+  }
+  await page.locator("[data-cancel-autosave-choice]").click();
+  await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
+  await page.locator('[data-game-id="ponpoko"]').click();
+  await page.locator("[data-autosave-choice]").waitFor({ timeout: 5_000 });
+  await page.locator("[data-start-new]").click();
   await page.getByText("ROM 다운로드 중").waitFor({ timeout: 5_000 });
   const loadingAnimationVisible = await page.locator(".loading-panel .pixel-loader").count();
   if (loadingAnimationVisible > 0) {
@@ -542,6 +587,10 @@ try {
         y: rect.top + rect.height / 2
       };
     });
+    const buttonVerticalSpan = buttonCenters.length > 0
+      ? Math.max(...buttonCenters.map((button) => button.y)) - Math.min(...buttonCenters.map((button) => button.y))
+      : 0;
+    const dpadCenterWidth = stick ? Number.parseFloat(getComputedStyle(stick, "::after").width) : 0;
     const dpadSectorFailures = stickRect === null
       ? [{ action: "none", hitAction: "none", x: 0, y: 0 }]
       : buildDpadSectorSamples(stickRect).flatMap((sample) => {
@@ -557,8 +606,10 @@ try {
     return {
       buttonCount: buttons.length,
       buttonCenters,
+      buttonVerticalSpanRatio: stickRect ? buttonVerticalSpan / stickRect.height : 1,
       buttonsVisible: buttons.every(isVisible),
       controlRect: surface ? toRect(surface) : null,
+      dpadCenterRatio: stickRect ? dpadCenterWidth / stickRect.width : 1,
       dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
@@ -611,6 +662,12 @@ try {
   }
   if (controllerLayout.dpadSectorFailures.length > 0) {
     throw new Error(`Ponpoko D-pad has dead or mismapped visible sectors: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (controllerLayout.buttonVerticalSpanRatio > 0.45) {
+    throw new Error(`Ponpoko action buttons are too steep for short thumb travel: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (controllerLayout.dpadCenterRatio > 0.18) {
+    throw new Error(`Ponpoko D-pad center circle is too large for sensitive sectors: ${JSON.stringify(controllerLayout)}`);
   }
   assertUniversalControllerGeometry(controllerLayout, "Ponpoko");
   await page.setViewportSize({ width: 375, height: 667 });
@@ -824,7 +881,45 @@ try {
     throw new Error(`Touch/keyboard controls scrolled the page: ${JSON.stringify(scrollState)}`);
   }
 
+  await seedAutosaveFromRuntimeState(page, "ponpoko");
   await tapLocator(page, page.locator('[data-touch-surface="virtual"] [data-back]'), "controller menu");
+  await page.waitForURL(baseUrl, { timeout: 10_000 });
+  await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
+  const autosaveSummary = await readAutosaveSummary(page, "ponpoko");
+  await page.evaluate(() => {
+    window.__smokeLoadStateCalls = [];
+  });
+  await page.locator('[data-game-id="ponpoko"]').click();
+  await page.locator("[data-autosave-choice]").waitFor({ timeout: 5_000 });
+  await page.locator("[data-continue-autosave]").click();
+  try {
+    await page.waitForFunction((expected) => {
+      return (window.__smokeLoadStateCalls ?? []).some((call) => {
+        return call.byteLength === expected.byteLength &&
+          call.checksum === expected.checksum &&
+          JSON.stringify(call.prefix) === JSON.stringify(expected.prefix) &&
+          JSON.stringify(call.suffix) === JSON.stringify(expected.suffix);
+      });
+    }, autosaveSummary, { timeout: 120_000 });
+  } catch (error) {
+    const autosaveRestoreDebug = await page.evaluate(() => ({
+      bodyText: document.body.innerText,
+      bootText: document.querySelector("[data-emulator-boot]")?.textContent ?? "",
+      calls: window.__smokeLoadStateCalls ?? [],
+      frame: window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0,
+      status: document.querySelector("[data-game-status]")?.textContent ?? "",
+      url: window.location.href
+    }));
+    throw new Error(
+      `Autosave continue did not load the selected state: ${JSON.stringify({
+        expected: autosaveSummary,
+        actual: autosaveRestoreDebug
+      })}`,
+      { cause: error }
+    );
+  }
+  await waitForGameStatus(page, "플레이 중");
+  await tapLocator(page, page.locator('[data-touch-surface="virtual"] [data-back]'), "controller menu after autosave continue");
   await page.waitForURL(baseUrl, { timeout: 10_000 });
   await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
   const menuState = await page.evaluate(() => ({
@@ -843,7 +938,7 @@ try {
   }
 
   await browser.close();
-  console.log("browser smoke ok: WebKit Ponpoko ROM fetch, active gameplay, keyboard/touch input, overlay hit tests, no scroll, and menu disposal verified");
+  console.log("browser smoke ok: WebKit Ponpoko ROM fetch, autosave continue, active gameplay, keyboard/touch input, overlay hit tests, no scroll, and menu disposal verified");
 } finally {
   server?.kill("SIGTERM");
 }
@@ -873,6 +968,112 @@ async function waitForServer(url) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`Preview server did not start at ${url}`);
+}
+
+async function seedAutosaveState(page, gameId) {
+  await page.evaluate((gameId) => new Promise((resolve, reject) => {
+    const request = indexedDB.open("arcade-safari", 3);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("autosaves")) {
+        database.createObjectStore("autosaves", { keyPath: "gameId" });
+      }
+      if (!database.objectStoreNames.contains("manual-states")) {
+        database.createObjectStore("manual-states", { keyPath: "gameId" });
+      }
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction("autosaves", "readwrite");
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.objectStore("autosaves").put({
+        gameId,
+        savedAt: Date.now() - 60_000,
+        state: new Uint8Array([1, 2, 3, 4]),
+        version: 1
+      });
+    };
+  }), gameId);
+}
+
+async function seedAutosaveFromRuntimeState(page, gameId) {
+  return page.evaluate((gameId) => new Promise((resolve, reject) => {
+    const gameManager = window.EJS_emulator?.gameManager;
+    const state = gameManager?.getState?.();
+    if (!state || state.byteLength === 0) {
+      reject(new Error("Runtime did not provide a save state for autosave continue smoke"));
+      return;
+    }
+
+    const stateBytes = new Uint8Array(state);
+    const summary = window.__smokeSummarizeBytes(stateBytes);
+    const request = indexedDB.open("arcade-safari", 3);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("autosaves")) {
+        database.createObjectStore("autosaves", { keyPath: "gameId" });
+      }
+      if (!database.objectStoreNames.contains("manual-states")) {
+        database.createObjectStore("manual-states", { keyPath: "gameId" });
+      }
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction("autosaves", "readwrite");
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+      transaction.oncomplete = () => {
+        database.close();
+        resolve(summary);
+      };
+      transaction.objectStore("autosaves").put({
+        gameId,
+        savedAt: Date.now(),
+        state: stateBytes,
+        version: 1
+      });
+    };
+  }), gameId);
+}
+
+async function readAutosaveSummary(page, gameId) {
+  return page.evaluate((gameId) => new Promise((resolve, reject) => {
+    const request = indexedDB.open("arcade-safari", 3);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction("autosaves", "readonly");
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+      const getRequest = transaction.objectStore("autosaves").get(gameId);
+      getRequest.onerror = () => {
+        database.close();
+        reject(getRequest.error);
+      };
+      getRequest.onsuccess = () => {
+        database.close();
+        const record = getRequest.result;
+        if (!record?.state) {
+          reject(new Error(`No autosave record found for ${gameId}`));
+          return;
+        }
+        resolve(window.__smokeSummarizeBytes(record.state));
+      };
+    };
+  }), gameId);
 }
 
 async function waitForGameStatus(page, expectedStatus) {

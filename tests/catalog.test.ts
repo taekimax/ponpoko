@@ -45,6 +45,15 @@ describe("static game catalog", () => {
     expect(getRomPath(wofjKorean!)).toBe(`/ponpoko/roms/wofj.zip?v=${wofjKorean?.romVersion}`);
   });
 
+  it("invalidates stale cached Metal Slug ROM bytes with the current compatible ROM hash", () => {
+    const metalSlug = CATALOG.find((game) => game.id === "mslug");
+
+    expect(metalSlug?.romVersion).toBe("44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9");
+    expect(getRomPath(metalSlug!)).toBe(
+      "/ponpoko/roms/mslug.zip?v=44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9"
+    );
+  });
+
   it("maps every game to a Safari-compatible core and a static same-origin ROM URL", () => {
     for (const game of CATALOG) {
       expect(["mame2003_plus", "snes9x"]).toContain(game.core);

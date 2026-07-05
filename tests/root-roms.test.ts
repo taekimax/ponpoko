@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../src/catalog";
 
 const expectedRoms = CATALOG.map((game) => game.romFile);
 
-describe("root ROM source of truth", () => {
+describe("root ROM files", () => {
   it("uses the catalog ROM manifest from root roms for build-time verification", () => {
     const manifestPath = path.join(process.cwd(), "scripts/catalog-roms.mjs");
     const manifestSource = readFileSync(manifestPath, "utf8");
@@ -16,15 +16,17 @@ describe("root ROM source of truth", () => {
     }
   });
 
-  it("keeps every catalog ROM in the repository root roms directory", () => {
-    for (const romFile of expectedRoms) {
-      const sourcePath = path.join(process.cwd(), "roms", romFile);
-      const buffer = readFileSync(sourcePath);
+  it("matches catalog cache versions to the actual root ROM bytes", () => {
+    for (const game of CATALOG) {
+      const sourcePath = path.join(process.cwd(), "roms", game.romFile);
+      const bytes = readFileSync(sourcePath);
+      const hash = createHash("sha256").update(bytes).digest("hex");
 
       expect(existsSync(sourcePath), `${sourcePath} should exist`).toBe(true);
-      expect(buffer.byteLength).toBeGreaterThan(1024);
-      expect(buffer[0]).toBe(0x50);
-      expect(buffer[1]).toBe(0x4b);
+      expect(bytes.byteLength).toBeGreaterThan(1024);
+      expect(bytes[0]).toBe(0x50);
+      expect(bytes[1]).toBe(0x4b);
+      expect(hash, game.romFile).toBe(game.romVersion);
     }
   });
 

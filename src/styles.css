@@ -191,7 +191,7 @@ p {
 .play-shell {
   display: grid;
   align-content: start;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
   height: 100dvh;
   overflow: hidden;
@@ -348,6 +348,22 @@ p {
   background: #000000;
 }
 
+.game-stage.is-vertical {
+  width: min(100%, 290px);
+  aspect-ratio: 224 / 320;
+}
+
+.play-shell.is-vertical-game {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.play-shell.is-vertical-game .game-stage.is-vertical {
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  max-height: none;
+}
+
 @media (hover: hover) and (pointer: fine) and (min-width: 900px) {
   .play-shell {
     gap: 12px;
@@ -359,6 +375,11 @@ p {
     width: auto;
     height: min(64dvh, 560px);
     max-height: none;
+  }
+
+  .game-stage.is-vertical {
+    width: auto;
+    height: min(64dvh, 620px);
   }
 
   .control-panel {
@@ -391,6 +412,14 @@ p {
   aspect-ratio: 288 / 224;
   image-rendering: pixelated;
   object-fit: contain;
+}
+
+.game-stage.is-vertical #game canvas {
+  width: auto !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: 320 / 224;
 }
 
 #game .ejs_virtualGamepad_parent,
@@ -520,9 +549,14 @@ p {
 
 .control-panel {
   display: grid;
+  align-content: center;
   justify-items: center;
   gap: 8px;
   min-height: 0;
+}
+
+.control-panel.is-vertical-controls {
+  align-content: start;
 }
 
 .virtual-arcade-controls {
@@ -588,6 +622,7 @@ p {
     0 12px 30px var(--liquid-shadow);
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
   backdrop-filter: blur(18px) saturate(1.35);
+  touch-action: none;
 }
 
 .virtual-stick::before {
@@ -861,8 +896,16 @@ p {
   pointer-events: none;
 }
 
+.virtual-game-button.is-inactive:disabled {
+  pointer-events: auto;
+}
+
 .virtual-stick-button:active,
 .virtual-stick-button:focus-visible,
+.virtual-stick[data-active-directions~="up"] .stick-up,
+.virtual-stick[data-active-directions~="right"] .stick-right,
+.virtual-stick[data-active-directions~="down"] .stick-down,
+.virtual-stick[data-active-directions~="left"] .stick-left,
 .virtual-game-button:active,
 .virtual-special-button:active {
   filter: brightness(1.18);
@@ -1017,6 +1060,10 @@ p {
 
   .virtual-stick-button:active,
   .virtual-stick-button:focus-visible,
+  .virtual-stick[data-active-directions~="up"] .stick-up,
+  .virtual-stick[data-active-directions~="right"] .stick-right,
+  .virtual-stick[data-active-directions~="down"] .stick-down,
+  .virtual-stick[data-active-directions~="left"] .stick-left,
   .virtual-game-button:active,
   .virtual-special-button:active {
     filter: none;
@@ -1117,6 +1164,7 @@ p {
 
   .keyboard-control-panel {
     display: flex;
+    align-items: center;
     flex-wrap: wrap;
     justify-content: center;
     gap: 7px;

@@ -1,5 +1,5 @@
 import type { BootProgressRuntime } from "./boot-progress";
-import type { GameEntry } from "./catalog";
+import { ROM_BASE_PATH, resolveRomPath, type GameEntry } from "./catalog";
 import type {
   EmulatorInput,
   NativeEmulator,
@@ -44,6 +44,9 @@ interface EmulatorJsRuntime {
     };
   };
   config?: {
+    biosUrl?: string;
+    dontExtractBIOS?: boolean;
+    gameParentUrl?: string;
     gameUrl?: string;
     loadState?: string;
   };
@@ -110,6 +113,8 @@ declare global {
     EJS_player?: string;
     EJS_gameName?: string;
     EJS_gameUrl?: File | string;
+    EJS_gameParentUrl?: string;
+    EJS_biosUrl?: string;
     EJS_core?: string;
     EJS_color?: string;
     EJS_pathtodata?: string;
@@ -123,6 +128,7 @@ declare global {
     EJS_defaultOptions?: Record<string, string>;
     EJS_disableDatabases?: boolean;
     EJS_disableLocalStorage?: boolean;
+    EJS_dontExtractBIOS?: boolean;
     EJS_forceLegacyCores?: boolean;
     EJS_hideSettings?: string[];
     EJS_loadStateURL?: string;
@@ -202,6 +208,23 @@ export function configureEmulator(game: GameEntry, gameUrl: File | string, onGam
   window.EJS_player = "#game";
   window.EJS_gameName = game.titleKo;
   window.EJS_gameUrl = gameUrl;
+  if (game.emulator.parentRomFile && game.core === "fbneo") {
+    window.EJS_gameParentUrl = game.emulator.parentRomFile;
+    window.EJS_dontExtractBIOS = true;
+    delete window.EJS_biosUrl;
+  } else if (game.emulator.parentRomFile) {
+    window.EJS_gameParentUrl = resolveRomPath(
+      ROM_BASE_PATH,
+      game.emulator.parentRomFile,
+      game.emulator.parentRomVersion
+    );
+    delete window.EJS_biosUrl;
+    delete window.EJS_dontExtractBIOS;
+  } else {
+    delete window.EJS_gameParentUrl;
+    delete window.EJS_biosUrl;
+    delete window.EJS_dontExtractBIOS;
+  }
   window.EJS_core = game.core;
   window.EJS_color = "#e64040";
   window.EJS_pathtodata = EMULATOR_DATA_PATH;
@@ -306,6 +329,9 @@ export function resetEmulatorJsRuntime(): void {
 
   delete window.EJS_emulator;
   delete window.EJS_gameUrl;
+  delete window.EJS_gameParentUrl;
+  delete window.EJS_biosUrl;
+  delete window.EJS_dontExtractBIOS;
   delete window.EJS_loadStateURL;
   document.querySelectorAll<HTMLScriptElement>('script[data-emulatorjs="loader"]').forEach((script) => script.remove());
 }

@@ -34,6 +34,18 @@ describe("EmulatorJS startup configuration", () => {
     ]);
   });
 
+  it("uses local FBNeo shell assets while leaving the FBNeo core data to EmulatorJS startup", () => {
+    expect(getEmulatorWarmupUrls("fbneo")).toEqual([
+      "/ponpoko/emulatorjs/loader.js",
+      "/ponpoko/emulatorjs/emulator.min.js",
+      "/ponpoko/emulatorjs/emulator.min.css",
+      "/ponpoko/emulatorjs/cores/reports/fbneo.json",
+      "/ponpoko/emulatorjs/compression/extract7z.js",
+      "/ponpoko/emulatorjs/compression/extractzip.js"
+    ]);
+    expect(getEmulatorWarmupUrls("fbneo")).not.toContain("/ponpoko/emulatorjs/cores/fbneo-legacy-wasm.data");
+  });
+
   it("warms cacheable assets without failing game startup when one request fails", async () => {
     const bodies: Array<{ arrayBuffer: ReturnType<typeof vi.fn> }> = [];
     const fetcher = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
@@ -117,6 +129,27 @@ describe("EmulatorJS startup configuration", () => {
     configureEmulator(CATALOG[1], "roms/pbobble.zip", vi.fn());
 
     expect("EJS_loadStateURL" in stubWindow).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("configures and clears the Metal Slug Neo Geo parent archive for FBNeo", () => {
+    const stubWindow = {};
+    const metalSlug = CATALOG.find((game) => game.id === "mslug");
+    vi.stubGlobal("window", stubWindow);
+
+    configureEmulator(metalSlug!, "roms/mslug.zip", vi.fn());
+
+    expect(stubWindow).toMatchObject({
+      EJS_core: "fbneo",
+      EJS_dontExtractBIOS: true,
+      EJS_gameParentUrl: "neogeo.zip"
+    });
+    expect("EJS_biosUrl" in stubWindow).toBe(false);
+
+    configureEmulator(CATALOG[0], "roms/ponpoko.zip", vi.fn());
+
+    expect("EJS_gameParentUrl" in stubWindow).toBe(false);
+    expect("EJS_dontExtractBIOS" in stubWindow).toBe(false);
     vi.unstubAllGlobals();
   });
 
@@ -282,7 +315,9 @@ describe("EmulatorJS startup configuration", () => {
     vi.stubGlobal("window", {
       EJS_emulator: {
         callEvent
-      }
+      },
+      EJS_dontExtractBIOS: true,
+      EJS_gameParentUrl: "neogeo.zip"
     });
     vi.stubGlobal("document", {
       querySelectorAll: vi.fn((selector: string) => selector === 'script[data-emulatorjs="loader"]'
@@ -298,6 +333,8 @@ describe("EmulatorJS startup configuration", () => {
     expect(removeLoader).toHaveBeenCalledTimes(1);
     expect(target.textContent).toBe("");
     expect("EJS_emulator" in window).toBe(false);
+    expect("EJS_gameParentUrl" in window).toBe(false);
+    expect("EJS_dontExtractBIOS" in window).toBe(false);
     vi.unstubAllGlobals();
   });
 });

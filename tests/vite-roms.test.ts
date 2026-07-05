@@ -16,8 +16,15 @@ describe("external ROM server paths", () => {
     );
   });
 
+  it("serves parent ROMs at the app root for EmulatorJS FBNeo parent loading", () => {
+    expect(resolveExternalRomPath("/ponpoko/neogeo.zip", "/tmp/roms")).toBe(
+      path.join("/tmp/roms", "neogeo.zip")
+    );
+  });
+
   it("rejects non-ROM routes and traversal attempts", () => {
     expect(resolveExternalRomPath("/ponpoko/thumbs/ponpoko.jpg")).toBeNull();
+    expect(resolveExternalRomPath("/ponpoko/not-a-parent.zip")).toBeNull();
     expect(resolveExternalRomPath("/ponpoko/roms/../secret.zip")).toBeNull();
     expect(resolveExternalRomPath("/ponpoko/roms/%2e%2e%2Fsecret.zip")).toBeNull();
     expect(resolveExternalRomPath("/ponpoko/roms/not-a-rom.txt")).toBeNull();

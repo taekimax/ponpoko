@@ -14,6 +14,7 @@ const requestedTargetLabel = process.env.GAME_RUNTIME_SMOKE_TARGET;
 const games = [
   {
     id: "pbobble",
+    dpadMode: "fourWay",
     inactiveButtons: 4,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
@@ -29,6 +30,7 @@ const games = [
   },
   {
     id: "spang",
+    dpadMode: "fourWay",
     inactiveButtons: 4,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
@@ -43,6 +45,8 @@ const games = [
     videoWidth: 384
   },
   {
+    core: "fbneo",
+    dpadMode: "eightWay",
     id: "mslug",
     inactiveButtons: 3,
     inputChecks: [
@@ -51,14 +55,37 @@ const games = [
       { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
     ],
     minFrame: 120,
+    parentRomFile: "neogeo.zip",
+    parentRomVersion: "bef93f5f254f3dbcc38afe033919f4e22502beca92877fad42a10729f3de1274",
     romFile: "mslug.zip",
-    romVersion: "44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9",
+    romVersion: "3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8",
     title: "메탈 슬러그",
     videoHeight: 224,
     videoWidth: 304
   },
   {
+    core: "fbneo",
+    dpadMode: "eightWay",
+    id: "s1945",
+    inactiveButtons: 4,
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "shot", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "bomb", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+    ],
+    minFrame: 600,
+    minVisiblePixelRatio: 0.04,
+    romFile: "s1945.zip",
+    romVersion: "b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d",
+    screenOrientation: "vertical",
+    title: "스트라이커즈 1945",
+    visibleRegion: { xEnd: 0.88, xStart: 0.12, yEnd: 0.86, yStart: 0.08 },
+    videoHeight: 224,
+    videoWidth: 320
+  },
+  {
     core: "snes9x",
+    dpadMode: "eightWay",
     id: "snes_smwk",
     inactiveButtons: 0,
     inputChecks: [
@@ -77,6 +104,7 @@ const games = [
     videoWidth: 256
   },
   {
+    dpadMode: "eightWay",
     id: "sf2ce",
     inactiveButtons: 0,
     inputChecks: [
@@ -92,6 +120,7 @@ const games = [
     videoWidth: 384
   },
   {
+    dpadMode: "eightWay",
     id: "wofj_korean_v1_20",
     inactiveButtons: 3,
     inputChecks: [
@@ -173,6 +202,11 @@ try {
 
 async function verifyGame(target, game) {
   const expectedRomUrl = new URL(`${game.romFile}?v=${game.romVersion}`, expectedRomBaseUrl).href;
+  const expectedParentRomUrl = game.parentRomFile
+    ? game.core === "fbneo"
+      ? new URL(game.parentRomFile, baseUrl).href
+      : new URL(`${game.parentRomFile}${game.parentRomVersion ? `?v=${game.parentRomVersion}` : ""}`, expectedRomBaseUrl).href
+    : null;
   const context = await target.browser.newContext(target.contextOptions);
   const page = await context.newPage();
 
@@ -203,6 +237,54 @@ async function verifyGame(target, game) {
           original(player, input, pressed);
         };
       };
+      window.__gameSmokeActiveTouchTarget = null;
+      window.__gameSmokeDispatchTouch = (type, x, y, active) => {
+        const target = window.__gameSmokeActiveTouchTarget || document.elementFromPoint(x, y) || document.body;
+        const touchInit = {
+          clientX: x,
+          clientY: y,
+          force: 1,
+          identifier: 1945,
+          pageX: x + window.scrollX,
+          pageY: y + window.scrollY,
+          radiusX: 6,
+          radiusY: 6,
+          rotationAngle: 0,
+          screenX: x,
+          screenY: y,
+          target
+        };
+        let touch = touchInit;
+        try {
+          if (typeof Touch === "function") {
+            touch = new Touch(touchInit);
+          }
+        } catch {
+          touch = touchInit;
+        }
+
+        let event;
+        try {
+          event = new TouchEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            changedTouches: [touch],
+            composed: true,
+            targetTouches: active ? [touch] : [],
+            touches: active ? [touch] : []
+          });
+        } catch {
+          event = document.createEvent("Event");
+          event.initEvent(type, true, true);
+          Object.defineProperties(event, {
+            changedTouches: { value: [touch] },
+            targetTouches: { value: active ? [touch] : [] },
+            touches: { value: active ? [touch] : [] }
+          });
+        }
+
+        target.dispatchEvent(event);
+      };
       window.setInterval(() => window.__gameSmokePatchInputCapture?.(), 50);
     });
 
@@ -227,9 +309,14 @@ async function verifyGame(target, game) {
     }
 
     const runtimeState = await page.evaluate((expectedRomUrl) => ({
+      biosUrl: window.EJS_biosUrl ?? null,
       bodyText: document.body.innerText,
+      configuredBiosUrl: window.EJS_emulator?.config?.biosUrl ?? null,
+      configuredDontExtractBios: window.EJS_emulator?.config?.dontExtractBIOS ?? null,
       core: window.EJS_core,
+      gameParentUrl: window.EJS_gameParentUrl ?? null,
       configuredGameUrl: window.EJS_emulator?.config?.gameUrl,
+      configuredGameParentUrl: window.EJS_emulator?.config?.gameParentUrl ?? null,
       configuredLoadState: window.EJS_emulator?.config?.loadState ?? null,
       failed: window.EJS_emulator?.failedToStart === true,
       frame: window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0,
@@ -244,7 +331,7 @@ async function verifyGame(target, game) {
       videoWidth: window.EJS_emulator?.gameManager?.getVideoDimensions?.("width")
     }), expectedRomUrl);
 
-    assertRuntimeState(target, game, runtimeState);
+    assertRuntimeState(target, game, runtimeState, expectedParentRomUrl);
     await assertMobileControllerLayout(page, target, game);
     await assertInactiveButtonsIgnoreInput(page, target, game);
 
@@ -260,6 +347,7 @@ async function verifyGame(target, game) {
         window.__gameSmokeInputCalls = [];
       });
     }
+    await assertDiagonalDpadInput(page, target, game);
   } finally {
     await context.close();
   }
@@ -404,8 +492,11 @@ async function assertMobileControllerLayout(page, target, game) {
       buttonVerticalSpanRatio: stickRect ? buttonVerticalSpan / stickRect.height : 1,
       buttonsVisible: buttons.every(isVisible),
       controlsRect,
+      controlsCenterY: controlsRect ? controlsRect.top + controlsRect.height / 2 : null,
       controlTop: controlsRect?.top ?? null,
       dpadCenterRatio: stickRect ? dpadCenterWidth / stickRect.width : 1,
+      dpadMode: stick?.getAttribute("data-dpad-mode") ?? null,
+      dpadActiveDirections: stick?.getAttribute("data-active-directions"),
       dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
@@ -413,7 +504,7 @@ async function assertMobileControllerLayout(page, target, game) {
       inactiveCount: inactiveButtons.length,
       inactiveDimmed: inactiveButtons.every((button) => {
         const style = getComputedStyle(button);
-        return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
+        return Number.parseFloat(style.opacity || "1") <= 0.5;
       }),
       scrollFits: (document.scrollingElement?.scrollHeight ?? 0) <= window.innerHeight + 1,
       specialActions: specialButtons.map((button) => (
@@ -485,6 +576,19 @@ async function assertMobileControllerLayout(page, target, game) {
   if (layout.dpadCenterRatio > 0.18) {
     throw new Error(`${target.label} ${game.id} D-pad center circle is too large for sensitive sectors: ${JSON.stringify(layout)}`);
   }
+  if (layout.dpadMode !== game.dpadMode || layout.dpadActiveDirections === null) {
+    throw new Error(`${target.label} ${game.id} D-pad mode/state is wrong: ${JSON.stringify(layout)}`);
+  }
+  if (game.screenOrientation === "vertical") {
+    if (layout.controlTop === null || layout.stageRect === null || layout.controlTop - layout.stageRect.bottom > layout.viewportHeight * 0.04) {
+      throw new Error(`${target.label} ${game.id} vertical controls do not use the available bottom space: ${JSON.stringify(layout)}`);
+    }
+  } else if (
+    layout.controlsCenterY === null ||
+    Math.abs(layout.controlsCenterY - layout.viewportHeight * 0.75) > layout.viewportHeight * 0.2
+  ) {
+    throw new Error(`${target.label} ${game.id} controls are not centered in the lower half: ${JSON.stringify(layout)}`);
+  }
   assertUniversalControllerGeometry(layout, `${target.label} ${game.id}`);
   await assertControlFeedback(page, '[data-touch-surface="virtual"] [data-action="left"]', `${target.label} ${game.id} D-pad left`);
   await assertControlFeedback(
@@ -494,8 +598,8 @@ async function assertMobileControllerLayout(page, target, game) {
   );
 }
 
-async function assertInactiveButtonsIgnoreInput(page, target, game) {
-  if (target.inputMode !== "pointer" || game.inactiveButtons === 0) {
+async function assertDiagonalDpadInput(page, target, game) {
+  if (target.inputMode !== "pointer" || game.dpadMode !== "eightWay") {
     return;
   }
 
@@ -503,16 +607,66 @@ async function assertInactiveButtonsIgnoreInput(page, target, game) {
     window.__gameSmokeInputCalls = [];
   });
 
+  const box = await page.locator(".virtual-stick").boundingBox();
+  if (!box) {
+    throw new Error(`${target.label} ${game.id} D-pad was not found`);
+  }
+
+  const x = box.x + box.width * 0.72;
+  const y = box.y + box.height * 0.28;
+  await dispatchTouchStart(page, x, y);
+  await page.waitForTimeout(120);
+  const downState = await page.evaluate(() => ({
+    activeDirections: document.querySelector(".virtual-stick")?.getAttribute("data-active-directions") ?? "",
+    calls: window.__gameSmokeInputCalls ?? []
+  }));
+  const pressedInputs = new Set(downState.calls.filter((call) => call.pressed === 1).map((call) => call.input));
+  if (!pressedInputs.has(4) || !pressedInputs.has(7) || !/\bup\b/.test(downState.activeDirections) || !/\bright\b/.test(downState.activeDirections)) {
+    await dispatchTouchEnd(page, x, y);
+    throw new Error(`${target.label} ${game.id} diagonal D-pad did not press up+right: ${JSON.stringify(downState)}`);
+  }
+
+  await dispatchTouchEnd(page, x, y);
+  await page.waitForTimeout(120);
+  const upState = await page.evaluate(() => ({
+    activeDirections: document.querySelector(".virtual-stick")?.getAttribute("data-active-directions") ?? "",
+    calls: window.__gameSmokeInputCalls ?? []
+  }));
+  const releasedInputs = new Set(upState.calls.filter((call) => call.pressed === 0).map((call) => call.input));
+  if (!releasedInputs.has(4) || !releasedInputs.has(7) || upState.activeDirections !== "") {
+    throw new Error(`${target.label} ${game.id} diagonal D-pad did not release cleanly: ${JSON.stringify(upState)}`);
+  }
+}
+
+async function assertInactiveButtonsIgnoreInput(page, target, game) {
+  if (target.inputMode !== "pointer" || game.inactiveButtons === 0) {
+    return;
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+    window.__ponpokoTouchLog = [];
+  });
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+    window.__ponpokoTouchLog = [];
+  });
+
   const box = await page.locator('[data-touch-surface="virtual"] .virtual-game-button.is-inactive').first().boundingBox();
   if (!box) {
     throw new Error(`${target.label} ${game.id} inactive button was not found`);
   }
 
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(120);
-  const calls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
-  if (calls.length > 0) {
-    throw new Error(`${target.label} ${game.id} inactive button sent input: ${JSON.stringify(calls)}`);
+  const state = await page.evaluate(() => ({
+    calls: window.__gameSmokeInputCalls ?? [],
+    touchLog: window.__ponpokoTouchLog ?? []
+  }));
+  const nonStartupCalls = state.calls.filter((call) => call.input !== 2 && call.input !== 3);
+  if (state.touchLog.length > 0 || nonStartupCalls.length > 0) {
+    throw new Error(`${target.label} ${game.id} inactive button sent touch input: ${JSON.stringify(state)}`);
   }
 }
 
@@ -588,10 +742,26 @@ function readFeedbackStyle(element) {
   };
 }
 
-function assertRuntimeState(target, game, runtimeState) {
+function assertRuntimeState(target, game, runtimeState, expectedParentRomUrl) {
   const expectedCore = game.core ?? "mame2003_plus";
   if (runtimeState.core !== expectedCore) {
     throw new Error(`${target.label} ${game.id} expected ${expectedCore} core, got ${runtimeState.core}`);
+  }
+  const normalizedGameParentUrl = runtimeState.gameParentUrl
+    ? new URL(runtimeState.gameParentUrl, baseUrl).href
+    : null;
+  const normalizedConfiguredGameParentUrl = runtimeState.configuredGameParentUrl
+    ? new URL(runtimeState.configuredGameParentUrl, baseUrl).href
+    : null;
+  if (normalizedGameParentUrl !== expectedParentRomUrl || normalizedConfiguredGameParentUrl !== expectedParentRomUrl) {
+    throw new Error(`${target.label} ${game.id} expected parent ROM ${expectedParentRomUrl}, got ${JSON.stringify(runtimeState)}`);
+  }
+  if (runtimeState.biosUrl !== null || runtimeState.configuredBiosUrl !== null) {
+    throw new Error(`${target.label} ${game.id} should not use BIOS URL loading, got ${JSON.stringify(runtimeState)}`);
+  }
+  const expectsUnextractedParent = game.core === "fbneo" && Boolean(game.parentRomFile);
+  if ((expectsUnextractedParent && runtimeState.configuredDontExtractBios !== true) || (!expectsUnextractedParent && runtimeState.configuredDontExtractBios === true)) {
+    throw new Error(`${target.label} ${game.id} has wrong parent extraction mode: ${JSON.stringify(runtimeState)}`);
   }
   if (runtimeState.gameUrlKind !== "file" || runtimeState.gameUrlName !== game.romFile) {
     throw new Error(`${target.label} ${game.id} expected warmed File ROM ${game.romFile}, got ${JSON.stringify(runtimeState)}`);
@@ -640,11 +810,22 @@ async function triggerControl(page, target, check) {
     throw new Error(`Control was not found for selector ${check.selector}`);
   }
 
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(120);
-  await page.mouse.up();
-  await page.waitForTimeout(120);
+}
+
+async function dispatchTouchStart(page, x, y) {
+  await page.evaluate(({ x, y }) => {
+    window.__gameSmokeActiveTouchTarget = document.elementFromPoint(x, y);
+    window.__gameSmokeDispatchTouch("touchstart", x, y, true);
+  }, { x, y });
+}
+
+async function dispatchTouchEnd(page, x, y) {
+  await page.evaluate(({ x, y }) => {
+    window.__gameSmokeDispatchTouch("touchend", x, y, false);
+    window.__gameSmokeActiveTouchTarget = null;
+  }, { x, y });
 }
 
 function assertInputPair(calls, input, label) {

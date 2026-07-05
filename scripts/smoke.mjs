@@ -1,9 +1,10 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { CATALOG_ROMS } from "./catalog-roms.mjs";
+import { CATALOG_PARENT_ROMS, CATALOG_ROMS } from "./catalog-roms.mjs";
 
 const romDir = path.join(process.cwd(), "roms");
+const distRootDir = path.join(process.cwd(), "dist");
 const distRomDir = path.join(process.cwd(), "dist/roms");
 const emulatorAssets = [
   "loader.js",
@@ -11,6 +12,8 @@ const emulatorAssets = [
   "emulator.min.css",
   "cores/reports/mame2003_plus.json",
   "cores/mame2003_plus-legacy-wasm.data",
+  "cores/reports/fbneo.json",
+  "cores/fbneo-legacy-wasm.data",
   "cores/reports/snes9x.json",
   "cores/snes9x-legacy-wasm.data",
   "compression/extract7z.js",
@@ -26,17 +29,26 @@ if (!html.includes("/ponpoko/assets/")) {
 }
 
 const distRomFiles = (await readdir(distRomDir)).filter((fileName) => fileName.endsWith(".zip")).sort();
-if (JSON.stringify(distRomFiles) !== JSON.stringify([...CATALOG_ROMS].sort())) {
-  throw new Error(`dist/roms must contain only catalog ROMs, got ${JSON.stringify(distRomFiles)}`);
+const expectedRomFiles = [...CATALOG_ROMS, ...CATALOG_PARENT_ROMS].sort();
+if (JSON.stringify(distRomFiles) !== JSON.stringify(expectedRomFiles)) {
+  throw new Error(`dist/roms must contain catalog and parent ROMs, got ${JSON.stringify(distRomFiles)}`);
 }
 
-for (const rom of CATALOG_ROMS) {
+for (const rom of [...CATALOG_ROMS, ...CATALOG_PARENT_ROMS]) {
   const rootRom = path.join(romDir, rom);
   const distRom = path.join(distRomDir, rom);
 
   await assertZip(rootRom);
   await assertZip(distRom);
   await assertSameHash(rootRom, distRom);
+}
+
+for (const parentRom of CATALOG_PARENT_ROMS) {
+  const rootRom = path.join(romDir, parentRom);
+  const distParentRom = path.join(distRootDir, parentRom);
+
+  await assertZip(distParentRom);
+  await assertSameHash(rootRom, distParentRom);
 }
 
 for (const asset of emulatorAssets) {

@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { CATALOG_ROMS } from "./catalog-roms.mjs";
+import { CATALOG_PARENT_ROMS, CATALOG_ROMS } from "./catalog-roms.mjs";
 
 const romDir = path.join(process.cwd(), "roms");
 
-for (const rom of CATALOG_ROMS) {
+for (const rom of [...CATALOG_ROMS, ...CATALOG_PARENT_ROMS]) {
   await validateZip(path.join(romDir, rom));
   console.log(`rom ok ${rom}`);
 }

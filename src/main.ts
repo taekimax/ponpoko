@@ -22,8 +22,11 @@ import {
   SPECIAL_CONTROLS,
   type ControlAction,
   type ControllerProfile,
+  type DpadAction,
+  type DpadMode,
   getControllerProfile,
-  getKeyboardControlHints
+  getKeyboardControlHints,
+  resolveDpadActions
 } from "./controllers";
 import { DeferredTaskQueue } from "./deferred-task-queue";
 import { createNativeEmulator, warmUpEmulatorAssets } from "./emulator";
@@ -260,9 +263,19 @@ function formatAutosaveSavedAt(savedAt: number): string {
 
 function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): void {
   const profile = getControllerProfile(game);
+  const isVerticalGame = game.screenOrientation === "vertical";
+  const shellClassName = isVerticalGame
+    ? "app-shell play-shell is-vertical-game"
+    : "app-shell play-shell";
+  const stageClassName = game.screenOrientation === "vertical"
+    ? "game-stage is-vertical"
+    : "game-stage";
+  const controlPanelClassName = isVerticalGame
+    ? "control-panel mobile-control-panel has-virtual-stick is-vertical-controls"
+    : "control-panel mobile-control-panel has-virtual-stick";
 
   app.innerHTML = `
-    <main class="app-shell play-shell">
+    <main class="${shellClassName}">
       <header class="game-topbar">
         <button class="icon-button" type="button" data-back>메뉴</button>
         <div>
@@ -275,11 +288,11 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
         ${renderStateSlotAction("save-button", "save-state", "저장", controlsEnabled)}
         ${renderStateSlotAction("load-button", "load-state", "불러오기", controlsEnabled)}
       </header>
-      <section class="game-stage">
+      <section class="${stageClassName}">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
       </section>
-      <section class="control-panel mobile-control-panel has-virtual-stick">
+      <section class="${controlPanelClassName}">
         ${renderVirtualArcadeControls(profile, controlsEnabled)}
       </section>
       ${renderKeyboardControls(profile)}
@@ -328,7 +341,12 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
       aria-hidden="false"
     >
       <div class="virtual-primary-controls" aria-hidden="${controlsEnabled ? "false" : "true"}">
-        <div class="virtual-stick" aria-label="가상 스틱">
+        <div
+          class="virtual-stick"
+          data-dpad-mode="${profile.dpadMode}"
+          data-active-directions=""
+          aria-label="가상 스틱"
+        >
           ${directions.map((zone) => `
             <button
               class="virtual-stick-button stick-${zone.area}"
@@ -347,7 +365,9 @@ function renderVirtualArcadeControls(profile: ControllerProfile, controlsEnabled
               type="button"
               data-action="${button.action}"
               data-controller-button="${button.id}"
-              ${button.inactive || !controlsEnabled ? 'aria-disabled="true" disabled' : ""}
+              ${button.inactive || !controlsEnabled ? 'aria-disabled="true"' : ""}
+              ${!controlsEnabled ? "disabled" : ""}
+              ${button.inactive ? 'tabindex="-1"' : ""}
             >
               ${button.label}
             </button>
@@ -537,14 +557,21 @@ async function startGame(game: GameEntry, startMode: AutosaveStartMode): Promise
 }
 
 interface ActivePointer {
-  currentAction: ControlAction;
+  currentActions: ControlAction[];
   pressed: boolean;
+  sourceStick?: HTMLElement;
 }
 
 function wireControls(root: HTMLElement): void {
   const activePointers = new Map<string, ActivePointer>();
 
+  wireVirtualSticks(root, activePointers);
+
   root.querySelectorAll<HTMLElement>("[data-action]").forEach((element) => {
+    if (element.closest(".virtual-stick")) {
+      return;
+    }
+
     const action = element.dataset.action as ControlAction | undefined;
     if (!action) {
       return;
@@ -555,6 +582,9 @@ function wireControls(root: HTMLElement): void {
         return;
       }
       event.preventDefault();
+      if (isControlDisabled(element)) {
+        return;
+      }
       startControlPress(
         `${POINTER_PREFIX}${event.pointerId}`,
         action,
@@ -579,6 +609,9 @@ function wireControls(root: HTMLElement): void {
       "touchstart",
       (event) => {
         event.preventDefault();
+        if (isControlDisabled(element)) {
+          return;
+        }
         for (const touch of [...event.changedTouches]) {
           startControlPress(
             `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
@@ -610,6 +643,79 @@ function wireControls(root: HTMLElement): void {
   });
 }
 
+function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, ActivePointer>): void {
+  root.querySelectorAll<HTMLElement>(".virtual-stick").forEach((stick) => {
+    const mode = readDpadMode(stick);
+
+    stick.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch") {
+        return;
+      }
+      event.preventDefault();
+      updateDpadPress(
+        `${POINTER_PREFIX}${event.pointerId}`,
+        stick,
+        mode,
+        event.clientX,
+        event.clientY,
+        activePointers
+      );
+      trySetPointerCapture(stick, event.pointerId);
+    });
+
+    stick.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "touch") {
+        return;
+      }
+      const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
+      if (!activePointers.has(pointerId)) {
+        return;
+      }
+      event.preventDefault();
+      updateDpadPress(pointerId, stick, mode, event.clientX, event.clientY, activePointers);
+    });
+
+    const releasePointer = (event: PointerEvent) => {
+      if (event.pointerType === "touch") {
+        return;
+      }
+      event.preventDefault();
+      endControlPress(`${POINTER_PREFIX}${event.pointerId}`, activePointers);
+    };
+
+    stick.addEventListener("pointerup", releasePointer);
+    stick.addEventListener("pointercancel", releasePointer);
+    stick.addEventListener("pointerleave", releasePointer);
+
+    const updateTouches = (event: TouchEvent) => {
+      event.preventDefault();
+      for (const touch of [...event.changedTouches]) {
+        updateDpadPress(
+          `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
+          stick,
+          mode,
+          touch.clientX,
+          touch.clientY,
+          activePointers
+        );
+      }
+    };
+
+    stick.addEventListener("touchstart", updateTouches, { passive: false });
+    stick.addEventListener("touchmove", updateTouches, { passive: false });
+
+    const releaseTouch = (event: TouchEvent) => {
+      event.preventDefault();
+      for (const touch of [...event.changedTouches]) {
+        endControlPress(`${TOUCH_POINTER_PREFIX}${touch.identifier}`, activePointers);
+      }
+    };
+
+    stick.addEventListener("touchend", releaseTouch, { passive: false });
+    stick.addEventListener("touchcancel", releaseTouch, { passive: false });
+  });
+}
+
 function wireStateSlotControls(root: HTMLElement): void {
   root.querySelectorAll<HTMLButtonElement>("[data-save-state]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -628,17 +734,62 @@ function startControlPress(
   action: ControlAction,
   activePointers: Map<string, ActivePointer>
 ): void {
-  if (activePointers.has(pointerId)) {
-    return;
+  updateControlPresses(pointerId, [action], activePointers);
+}
+
+function updateDpadPress(
+  pointerId: string,
+  stick: HTMLElement,
+  mode: DpadMode,
+  clientX: number,
+  clientY: number,
+  activePointers: Map<string, ActivePointer>
+): void {
+  updateControlPresses(
+    pointerId,
+    resolveDpadActions(mode, ...readDpadVector(stick, clientX, clientY)),
+    activePointers,
+    stick
+  );
+}
+
+function updateControlPresses(
+  pointerId: string,
+  actions: ControlAction[],
+  activePointers: Map<string, ActivePointer>,
+  sourceStick?: HTMLElement
+): void {
+  let activePointer = activePointers.get(pointerId);
+  if (!activePointer) {
+    requestRuntimeAudioUnlock();
+    activePointer = {
+      currentActions: [],
+      pressed: true,
+      sourceStick
+    };
+    activePointers.set(pointerId, activePointer);
   }
 
-  requestRuntimeAudioUnlock();
-  activePointers.set(pointerId, {
-    currentAction: action,
-    pressed: true
-  });
-  recordBootDebugTouch(action, "down");
-  input.pressControl(action);
+  const nextActions = [...new Set(actions)];
+  const previousActions = activePointer.currentActions;
+
+  for (const action of previousActions) {
+    if (!nextActions.includes(action)) {
+      recordBootDebugTouch(action, "up");
+      input.releaseControl(action);
+    }
+  }
+
+  for (const action of nextActions) {
+    if (!previousActions.includes(action)) {
+      recordBootDebugTouch(action, "down");
+      input.pressControl(action);
+    }
+  }
+
+  activePointer.currentActions = nextActions;
+  activePointer.sourceStick = sourceStick ?? activePointer.sourceStick;
+  updateStickActiveDirections(activePointer.sourceStick, activePointers);
 }
 
 function endControlPress(pointerId: string, activePointers: Map<string, ActivePointer>): void {
@@ -647,11 +798,58 @@ function endControlPress(pointerId: string, activePointers: Map<string, ActivePo
     return;
   }
 
-  recordBootDebugTouch(activePointer.currentAction, "up");
   if (activePointer.pressed) {
-    input.releaseControl(activePointer.currentAction);
+    for (const action of activePointer.currentActions) {
+      recordBootDebugTouch(action, "up");
+      input.releaseControl(action);
+    }
   }
   activePointers.delete(pointerId);
+  updateStickActiveDirections(activePointer.sourceStick, activePointers);
+}
+
+function readDpadMode(stick: HTMLElement): DpadMode {
+  return stick.dataset.dpadMode === "eightWay" ? "eightWay" : "fourWay";
+}
+
+function readDpadVector(stick: HTMLElement, clientX: number, clientY: number): [number, number] {
+  const rect = stick.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+
+  return [
+    (clientX - centerX) / radius,
+    (clientY - centerY) / radius
+  ];
+}
+
+function updateStickActiveDirections(
+  stick: HTMLElement | undefined,
+  activePointers: Map<string, ActivePointer>
+): void {
+  if (!stick) {
+    return;
+  }
+
+  const activeDirections = new Set<DpadAction>();
+  for (const pointer of activePointers.values()) {
+    if (pointer.sourceStick !== stick) {
+      continue;
+    }
+
+    for (const action of pointer.currentActions) {
+      if (isDpadAction(action)) {
+        activeDirections.add(action);
+      }
+    }
+  }
+
+  stick.dataset.activeDirections = [...activeDirections].join(" ");
+}
+
+function isDpadAction(action: ControlAction): action is DpadAction {
+  return action === "up" || action === "right" || action === "down" || action === "left";
 }
 
 function requestRuntimeAudioUnlock(): void {
@@ -815,8 +1013,11 @@ function enableRuntimeControls(): void {
     primaryControls.setAttribute("aria-hidden", "false");
   });
   app.querySelectorAll<HTMLButtonElement>("[data-touch-controls] button").forEach((button) => {
-    if (!button.classList.contains("is-inactive")) {
-      button.disabled = false;
+    button.disabled = false;
+    if (button.classList.contains("is-inactive")) {
+      button.setAttribute("aria-disabled", "true");
+      button.tabIndex = -1;
+    } else {
       button.removeAttribute("aria-disabled");
     }
   });
@@ -834,6 +1035,11 @@ function enableRuntimeControls(): void {
     startAutosave(state.game);
     drainDeferredRomCacheSavesAfterPaint();
   }
+}
+
+function isControlDisabled(element: HTMLElement): boolean {
+  return (element instanceof HTMLButtonElement && element.disabled) ||
+    element.getAttribute("aria-disabled") === "true";
 }
 
 function queueDeferredRomCacheSave(task: () => void): void {

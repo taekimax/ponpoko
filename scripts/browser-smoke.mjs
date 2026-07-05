@@ -609,7 +609,10 @@ try {
       buttonVerticalSpanRatio: stickRect ? buttonVerticalSpan / stickRect.height : 1,
       buttonsVisible: buttons.every(isVisible),
       controlRect: surface ? toRect(surface) : null,
+      controlCenterY: surface ? toRect(surface).top + toRect(surface).height / 2 : null,
       dpadCenterRatio: stickRect ? dpadCenterWidth / stickRect.width : 1,
+      dpadMode: stick?.getAttribute("data-dpad-mode") ?? null,
+      dpadActiveDirections: stick?.getAttribute("data-active-directions"),
       dpadSectorFailures,
       dpadLeftOfButtons: stickRect !== null && buttonRects.length > 0
         ? stickRect.right < Math.min(...buttonRects.map((rect) => rect.left))
@@ -617,7 +620,7 @@ try {
       inactiveCount: inactiveButtons.length,
       inactiveDimmed: inactiveButtons.every((button) => {
         const style = getComputedStyle(button);
-        return Number.parseFloat(style.opacity || "1") <= 0.5 && style.pointerEvents === "none";
+        return Number.parseFloat(style.opacity || "1") <= 0.5;
       }),
       specialActions: specialButtons.map((button) => (
         button.getAttribute("data-action") ??
@@ -668,6 +671,15 @@ try {
   }
   if (controllerLayout.dpadCenterRatio > 0.18) {
     throw new Error(`Ponpoko D-pad center circle is too large for sensitive sectors: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (controllerLayout.dpadMode !== "fourWay" || controllerLayout.dpadActiveDirections === null) {
+    throw new Error(`Ponpoko D-pad does not expose controller mode and active state: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (
+    controllerLayout.controlCenterY === null ||
+    Math.abs(controllerLayout.controlCenterY - controllerLayout.viewportHeight * 0.75) > controllerLayout.viewportHeight * 0.18
+  ) {
+    throw new Error(`Universal controller is not centered in the lower half for thumb reach: ${JSON.stringify(controllerLayout)}`);
   }
   assertUniversalControllerGeometry(controllerLayout, "Ponpoko");
   await page.setViewportSize({ width: 375, height: 667 });

@@ -24,10 +24,13 @@ export type ControlAction =
   | "start"
   | "coin";
 
+export type DpadAction = Extract<ControlAction, "left" | "right" | "up" | "down">;
+export type DpadMode = "fourWay" | "eightWay";
+
 export interface ControlZone {
   id: string;
   label: string;
-  action: ControlAction;
+  action: DpadAction;
   area: "left" | "right" | "up" | "down";
 }
 
@@ -40,6 +43,7 @@ export interface ControlButton {
 }
 
 export interface ControllerProfile {
+  dpadMode: DpadMode;
   id: ControllerProfileId;
   label: string;
   hint: string;
@@ -108,6 +112,7 @@ function createUniversalButtons(buttons: Array<Partial<ControlButton> & Pick<Con
 
 export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = {
   platformJump: {
+    dpadMode: "fourWay",
     id: "platformJump",
     label: "D패드 + 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 점프",
@@ -123,6 +128,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     ])
   },
   platformFire: {
+    dpadMode: "fourWay",
     id: "platformFire",
     label: "D패드 + 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 점프/공격",
@@ -138,6 +144,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     ])
   },
   puzzleShoot: {
+    dpadMode: "fourWay",
     id: "puzzleShoot",
     label: "D패드 + 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 발사/와이어",
@@ -152,7 +159,24 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" }
     ])
   },
+  arcadeTwoButton: {
+    dpadMode: "eightWay",
+    id: "arcadeTwoButton",
+    label: "D패드 + 6버튼",
+    hint: "왼쪽 D패드 이동 · 오른쪽 샷/폭탄",
+    zonePlacement: "virtualStick",
+    zones: UNIVERSAL_DPAD_ZONES,
+    buttons: createUniversalButtons([
+      { label: "샷" },
+      { label: "폭탄" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" }
+    ])
+  },
   arcadeThreeButton: {
+    dpadMode: "eightWay",
     id: "arcadeThreeButton",
     label: "D패드 + 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 버튼 3개",
@@ -168,6 +192,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     ])
   },
   arcadeSixButton: {
+    dpadMode: "eightWay",
     id: "arcadeSixButton",
     label: "D패드 + 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 버튼 6개",
@@ -183,6 +208,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     ])
   },
   sfcSixButton: {
+    dpadMode: "eightWay",
     id: "sfcSixButton",
     label: "SFC 6버튼",
     hint: "왼쪽 D패드 이동 · 오른쪽 SFC 버튼",
@@ -201,6 +227,40 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
 
 export function getControllerProfile(game: GameEntry): ControllerProfile {
   return CONTROL_PROFILES[game.controllerProfile];
+}
+
+export function resolveDpadActions(mode: DpadMode, deltaX: number, deltaY: number): DpadAction[] {
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  const magnitude = Math.hypot(deltaX, deltaY);
+
+  if (magnitude < 0.18) {
+    return [];
+  }
+
+  const horizontal: DpadAction = deltaX >= 0 ? "right" : "left";
+  const vertical: DpadAction = deltaY >= 0 ? "down" : "up";
+
+  if (mode === "fourWay") {
+    return absX >= absY ? [horizontal] : [vertical];
+  }
+
+  const normalizedX = absX / magnitude;
+  const normalizedY = absY / magnitude;
+  if (normalizedX >= 0.38 && normalizedY >= 0.38) {
+    if (deltaX >= 0 && deltaY < 0) {
+      return ["up", "right"];
+    }
+    if (deltaX >= 0 && deltaY >= 0) {
+      return ["right", "down"];
+    }
+    if (deltaX < 0 && deltaY >= 0) {
+      return ["down", "left"];
+    }
+    return ["left", "up"];
+  }
+
+  return absX >= absY ? [horizontal] : [vertical];
 }
 
 export function getKeyboardControlHints(profile: ControllerProfile): KeyboardControlHint[] {

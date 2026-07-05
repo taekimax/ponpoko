@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Connect } from "vite";
+import { CATALOG_PARENT_ROMS } from "./scripts/catalog-roms.mjs";
 
 const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROM_DIR = path.join(REPO_ROOT, "roms");
@@ -9,6 +10,7 @@ const DEFAULT_ROM_DIR = path.join(REPO_ROOT, "roms");
 export const EXTERNAL_ROM_DIR = process.env.ARCADE_SAFARI_ROM_DIR ?? DEFAULT_ROM_DIR;
 
 const ROM_ROUTE_PREFIX = "/ponpoko/roms/";
+const APP_ROUTE_PREFIX = "/ponpoko/";
 
 interface HeaderResponse {
   setHeader(name: string, value: number | string | string[]): unknown;
@@ -16,9 +18,9 @@ interface HeaderResponse {
 
 export function resolveExternalRomPath(requestUrl: string, romDir = EXTERNAL_ROM_DIR): string | null {
   const url = new URL(requestUrl, "http://localhost");
-  const fileName = decodeURIComponent(url.pathname).slice(ROM_ROUTE_PREFIX.length);
+  const fileName = resolveRomFileName(url.pathname);
 
-  if (!url.pathname.startsWith(ROM_ROUTE_PREFIX) || !isSafeRomFileName(fileName)) {
+  if (!fileName) {
     return null;
   }
 
@@ -29,6 +31,20 @@ export function resolveExternalRomPath(requestUrl: string, romDir = EXTERNAL_ROM
   }
 
   return romPath;
+}
+
+function resolveRomFileName(pathname: string): string | null {
+  if (pathname.startsWith(ROM_ROUTE_PREFIX)) {
+    const fileName = decodeURIComponent(pathname).slice(ROM_ROUTE_PREFIX.length);
+    return isSafeRomFileName(fileName) ? fileName : null;
+  }
+
+  if (pathname.startsWith(APP_ROUTE_PREFIX)) {
+    const fileName = decodeURIComponent(pathname).slice(APP_ROUTE_PREFIX.length);
+    return CATALOG_PARENT_ROMS.includes(fileName) && isSafeRomFileName(fileName) ? fileName : null;
+  }
+
+  return null;
 }
 
 export function createExternalRomMiddleware(romDir = EXTERNAL_ROM_DIR): Connect.NextHandleFunction {

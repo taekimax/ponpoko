@@ -4,12 +4,13 @@ import { CATALOG, ROM_BASE_PATH, getRomPath, resolveRomPath } from "../src/catal
 describe("static game catalog", () => {
   it("supports the local-ROM games with fixed ROM paths", () => {
     expect(ROM_BASE_PATH).toBe("/ponpoko/roms/");
-    expect(CATALOG).toHaveLength(7);
+    expect(CATALOG).toHaveLength(8);
     expect(CATALOG.map((game) => game.romFile)).toEqual([
       "ponpoko.zip",
       "pbobble.zip",
       "spang.zip",
       "mslug.zip",
+      "s1945.zip",
       "snes_smwk.zip",
       "sf2ce.zip",
       "wofj.zip"
@@ -19,7 +20,16 @@ describe("static game catalog", () => {
   it("uses the expected local ROM identifiers", () => {
     const ids = CATALOG.map((game) => game.id);
 
-    expect(ids).toEqual(["ponpoko", "pbobble", "spang", "mslug", "snes_smwk", "sf2ce", "wofj_korean_v1_20"]);
+    expect(ids).toEqual([
+      "ponpoko",
+      "pbobble",
+      "spang",
+      "mslug",
+      "s1945",
+      "snes_smwk",
+      "sf2ce",
+      "wofj_korean_v1_20"
+    ]);
   });
 
   it("loads Super Mario World through the SNES9x core instead of the NSS MAME set", () => {
@@ -45,18 +55,48 @@ describe("static game catalog", () => {
     expect(getRomPath(wofjKorean!)).toBe(`/ponpoko/roms/wofj.zip?v=${wofjKorean?.romVersion}`);
   });
 
-  it("invalidates stale cached Metal Slug ROM bytes with the current compatible ROM hash", () => {
+  it("loads Metal Slug through FBNeo with the original ROM hash and Neo Geo parent BIOS", () => {
     const metalSlug = CATALOG.find((game) => game.id === "mslug");
 
-    expect(metalSlug?.romVersion).toBe("44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9");
+    expect(metalSlug).toMatchObject({
+      core: "fbneo",
+      emulator: expect.objectContaining({
+        parentRomFile: "neogeo.zip",
+        parentRomVersion: "bef93f5f254f3dbcc38afe033919f4e22502beca92877fad42a10729f3de1274"
+      }),
+      runtimeDebug: expect.objectContaining({
+        coreDataFragment: "/emulatorjs/cores/fbneo-legacy-wasm.data"
+      })
+    });
+    expect(metalSlug?.romVersion).toBe("3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8");
     expect(getRomPath(metalSlug!)).toBe(
-      "/ponpoko/roms/mslug.zip?v=44fe2003ff1987516738cc89854ee3fe0280f4c38fb29113f2374b78100443b9"
+      "/ponpoko/roms/mslug.zip?v=3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8"
+    );
+  });
+
+  it("loads Strikers 1945 through FBNeo as a vertical two-button shooter", () => {
+    const strikers1945 = CATALOG.find((game) => game.id === "s1945");
+
+    expect(strikers1945).toMatchObject({
+      controllerProfile: "arcadeTwoButton",
+      core: "fbneo",
+      romFile: "s1945.zip",
+      screenOrientation: "vertical",
+      runtimeDebug: expect.objectContaining({
+        coreDataFragment: "/emulatorjs/cores/fbneo-legacy-wasm.data"
+      }),
+      titleEn: "Strikers 1945"
+    });
+    expect(strikers1945?.emulator.parentRomFile).toBeUndefined();
+    expect(strikers1945?.romVersion).toBe("b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d");
+    expect(getRomPath(strikers1945!)).toBe(
+      "/ponpoko/roms/s1945.zip?v=b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d"
     );
   });
 
   it("maps every game to a Safari-compatible core and a static same-origin ROM URL", () => {
     for (const game of CATALOG) {
-      expect(["mame2003_plus", "snes9x"]).toContain(game.core);
+      expect(["fbneo", "mame2003_plus", "snes9x"]).toContain(game.core);
       expect(game.rotation).toBe(0);
       expect(game.romVersion).toMatch(/^[a-f0-9]{64}$/);
       expect(getRomPath(game)).toBe(`/ponpoko/roms/${game.romFile}?v=${game.romVersion}`);

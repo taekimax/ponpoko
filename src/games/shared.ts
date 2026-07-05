@@ -4,6 +4,7 @@ export type ControllerProfileId =
   | "platformJump"
   | "platformFire"
   | "puzzleShoot"
+  | "arcadeTwoButton"
   | "arcadeThreeButton"
   | "arcadeSixButton"
   | "sfcSixButton";
@@ -14,16 +15,19 @@ export type GameId =
   | "spang"
   | "bublbobl1"
   | "mslug"
+  | "s1945"
   | "snes_smwk"
   | "sf2ce"
   | "wofj_korean_v1_20";
 
-export type EmulatorCore = "mame2003_plus" | "snes9x";
+export type EmulatorCore = "fbneo" | "mame2003_plus" | "snes9x";
 
 export interface EmulatorJsGameConfig {
   defaultOptions: Record<string, string>;
   forceLegacyCores: boolean;
   loadStateUrl?: string;
+  parentRomFile?: string;
+  parentRomVersion?: string;
 }
 
 export interface RuntimeDebugConfig {
@@ -41,6 +45,7 @@ export interface GameEntry {
   rotation: 0;
   romFile: string;
   romVersion: string;
+  screenOrientation?: "horizontal" | "vertical";
   thumbnailFile: string;
   sourcePageUrl: string;
   controllerProfile: ControllerProfileId;

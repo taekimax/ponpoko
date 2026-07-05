@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../src/catalog";
-import { CONTROL_PROFILES, SPECIAL_CONTROLS, getControllerProfile, getKeyboardControlHints } from "../src/controllers";
+import {
+  CONTROL_PROFILES,
+  SPECIAL_CONTROLS,
+  getControllerProfile,
+  getKeyboardControlHints,
+  resolveDpadActions
+} from "../src/controllers";
 
 describe("controller profiles", () => {
   it("defines a controller profile for every catalog game", () => {
@@ -37,6 +43,7 @@ describe("controller profiles", () => {
       ["pbobble", [false, false, true, true, true, true]],
       ["spang", [false, false, true, true, true, true]],
       ["mslug", [false, false, false, true, true, true]],
+      ["s1945", [false, false, true, true, true, true]],
       ["snes_smwk", [false, false, false, false, false, false]],
       ["sf2ce", [false, false, false, false, false, false]],
       ["wofj_korean_v1_20", [false, false, false, true, true, true]]
@@ -48,6 +55,52 @@ describe("controller profiles", () => {
 
       expect(inactive).toEqual(inactiveByGame.get(game.id));
     }
+  });
+
+  it("enables 8-way D-pad synthesis only for games that use diagonal movement", () => {
+    const modesByGame = new Map([
+      ["ponpoko", "fourWay"],
+      ["pbobble", "fourWay"],
+      ["spang", "fourWay"],
+      ["mslug", "eightWay"],
+      ["s1945", "eightWay"],
+      ["snes_smwk", "eightWay"],
+      ["sf2ce", "eightWay"],
+      ["wofj_korean_v1_20", "eightWay"]
+    ]);
+
+    for (const game of CATALOG) {
+      expect(getControllerProfile(game).dpadMode).toBe(modesByGame.get(game.id));
+    }
+  });
+
+  it("labels Strikers 1945 as a two-button shooter in the shared six-button footprint", () => {
+    const profile = getControllerProfile(CATALOG.find((game) => game.id === "s1945")!);
+
+    expect(profile.buttons.map((button) => button.label)).toEqual(["샷", "폭탄", "·", "·", "·", "·"]);
+    expect(getKeyboardControlHints(profile)).toEqual([
+      { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
+      { id: "button-1", keys: ["Q"], label: "샷" },
+      { id: "button-2", keys: ["W"], label: "폭탄" },
+      { id: "coin", keys: ["5"], label: "동전" },
+      { id: "ok", keys: ["O"], label: "OK" },
+      { id: "play", keys: ["Enter", "P"], label: "플레이" }
+    ]);
+  });
+
+  it("resolves diagonal D-pad vectors as paired cardinal presses for 8-way profiles", () => {
+    expect(resolveDpadActions("eightWay", 1, -1)).toEqual(["up", "right"]);
+    expect(resolveDpadActions("eightWay", 1, 1)).toEqual(["right", "down"]);
+    expect(resolveDpadActions("eightWay", -1, 1)).toEqual(["down", "left"]);
+    expect(resolveDpadActions("eightWay", -1, -1)).toEqual(["left", "up"]);
+    expect(resolveDpadActions("eightWay", 0.02, 0.02)).toEqual([]);
+  });
+
+  it("keeps 4-way profiles locked to the nearest cardinal direction", () => {
+    expect(resolveDpadActions("fourWay", 1, -1)).toEqual(["right"]);
+    expect(resolveDpadActions("fourWay", -1, -1)).toEqual(["left"]);
+    expect(resolveDpadActions("fourWay", 0, -1)).toEqual(["up"]);
+    expect(resolveDpadActions("fourWay", 0, 1)).toEqual(["down"]);
   });
 
   it("keeps one always-visible mobile special key strip available for every game", () => {

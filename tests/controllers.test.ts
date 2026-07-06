@@ -42,8 +42,7 @@ describe("controller profiles", () => {
       ["ponpoko", [false, true, true, true, true, true]],
       ["pbobble", [false, false, true, true, true, true]],
       ["spang", [false, false, true, true, true, true]],
-      ["mslug", [false, false, false, true, true, true]],
-      ["s1945", [false, false, true, true, true, true]],
+      ["bublbobl", [false, false, true, true, true, true]],
       ["snes_smwk", [false, false, false, false, false, false]],
       ["sf2ce", [false, false, false, false, false, false]],
       ["wofj_korean_v1_20", [false, false, false, true, true, true]]
@@ -62,8 +61,7 @@ describe("controller profiles", () => {
       ["ponpoko", "fourWay"],
       ["pbobble", "fourWay"],
       ["spang", "fourWay"],
-      ["mslug", "eightWay"],
-      ["s1945", "eightWay"],
+      ["bublbobl", "fourWay"],
       ["snes_smwk", "eightWay"],
       ["sf2ce", "eightWay"],
       ["wofj_korean_v1_20", "eightWay"]
@@ -74,8 +72,8 @@ describe("controller profiles", () => {
     }
   });
 
-  it("labels Strikers 1945 as a two-button shooter in the shared six-button footprint", () => {
-    const profile = getControllerProfile(CATALOG.find((game) => game.id === "s1945")!);
+  it("labels the two-button arcade profile in the shared six-button footprint", () => {
+    const profile = CONTROL_PROFILES.arcadeTwoButton;
 
     expect(profile.buttons.map((button) => button.label)).toEqual(["샷", "폭탄", "·", "·", "·", "·"]);
     expect(getKeyboardControlHints(profile)).toEqual([

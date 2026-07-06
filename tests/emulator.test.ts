@@ -7,6 +7,7 @@ import {
   suppressEmulatorChrome,
   warmUpEmulatorAssets
 } from "../src/emulator";
+import { METAL_SLUG_GAME } from "../src/games/metal-slug";
 
 describe("EmulatorJS startup configuration", () => {
   it("warms only small shell assets and leaves large MAME core data to EmulatorJS startup", () => {
@@ -134,10 +135,9 @@ describe("EmulatorJS startup configuration", () => {
 
   it("configures and clears the Metal Slug Neo Geo parent archive for FBNeo", () => {
     const stubWindow = {};
-    const metalSlug = CATALOG.find((game) => game.id === "mslug");
     vi.stubGlobal("window", stubWindow);
 
-    configureEmulator(metalSlug!, "roms/mslug.zip", vi.fn());
+    configureEmulator(METAL_SLUG_GAME, "roms/mslug.zip", vi.fn());
 
     expect(stubWindow).toMatchObject({
       EJS_core: "fbneo",

@@ -5,8 +5,8 @@ import { SHARED_EMULATOR_CONFIG } from "../src/games/shared";
 describe("Bubble Bobble game configuration", () => {
   it("uses the Bubble Bobble ROM identity, assets, and controller profile", () => {
     expect(BUBBLE_BOBBLE_GAME).toMatchObject({
-      id: "bublbobl1",
-      romFile: "bublbobl1.zip",
+      id: "bublbobl",
+      romFile: "bublbobl.zip",
       thumbnailFile: "bubbobr1.jpg",
       controllerProfile: "platformFire"
     });

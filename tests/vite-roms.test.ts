@@ -16,10 +16,8 @@ describe("external ROM server paths", () => {
     );
   });
 
-  it("serves parent ROMs at the app root for EmulatorJS FBNeo parent loading", () => {
-    expect(resolveExternalRomPath("/ponpoko/neogeo.zip", "/tmp/roms")).toBe(
-      path.join("/tmp/roms", "neogeo.zip")
-    );
+  it("does not serve undeclared parent ROMs at the app root", () => {
+    expect(resolveExternalRomPath("/ponpoko/neogeo.zip", "/tmp/roms")).toBeNull();
   });
 
   it("rejects non-ROM routes and traversal attempts", () => {

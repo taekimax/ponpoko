@@ -45,43 +45,20 @@ const games = [
     videoWidth: 384
   },
   {
-    core: "fbneo",
-    dpadMode: "eightWay",
-    id: "mslug",
-    inactiveButtons: 3,
-    inputChecks: [
-      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
-    ],
-    minFrame: 120,
-    parentRomFile: "neogeo.zip",
-    parentRomVersion: "bef93f5f254f3dbcc38afe033919f4e22502beca92877fad42a10729f3de1274",
-    romFile: "mslug.zip",
-    romVersion: "3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8",
-    title: "메탈 슬러그",
-    videoHeight: 224,
-    videoWidth: 304
-  },
-  {
-    core: "fbneo",
-    dpadMode: "eightWay",
-    id: "s1945",
+    id: "bublbobl",
+    dpadMode: "fourWay",
     inactiveButtons: 4,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "shot", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "bomb", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "jump", selector: '[data-touch-surface="virtual"] [data-action="jump"]' },
+      { expectedInput: 1, keyboard: "KeyW", label: "attack", selector: '[data-touch-surface="virtual"] [data-action="attack"]' }
     ],
-    minFrame: 600,
-    minVisiblePixelRatio: 0.04,
-    romFile: "s1945.zip",
-    romVersion: "b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d",
-    screenOrientation: "vertical",
-    title: "스트라이커즈 1945",
-    visibleRegion: { xEnd: 0.88, xStart: 0.12, yEnd: 0.86, yStart: 0.08 },
+    minFrame: 120,
+    romFile: "bublbobl.zip",
+    romVersion: "c23a70a5f12e695fec513fee682441accba5ea44a811ff43289ed894ec8ce505",
+    title: "보글보글",
     videoHeight: 224,
-    videoWidth: 320
+    videoWidth: 256
   },
   {
     core: "snes9x",

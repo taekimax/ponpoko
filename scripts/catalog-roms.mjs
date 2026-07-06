@@ -2,13 +2,11 @@ export const CATALOG_ROMS = [
   "ponpoko.zip",
   "pbobble.zip",
   "spang.zip",
-  "mslug.zip",
-  "s1945.zip",
+  "bublbobl.zip",
   "snes_smwk.zip",
   "sf2ce.zip",
   "wofj.zip"
 ];
 
 export const CATALOG_PARENT_ROMS = [
-  "neogeo.zip"
 ];

@@ -13,7 +13,7 @@ export type GameId =
   | "ponpoko"
   | "pbobble"
   | "spang"
-  | "bublbobl1"
+  | "bublbobl"
   | "mslug"
   | "s1945"
   | "snes_smwk"

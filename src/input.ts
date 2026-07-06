@@ -1,4 +1,4 @@
-import type { ControlAction } from "./controllers";
+import { getKeyboardActionKeys, type ControlAction, type ControllerProfile } from "./controllers";
 import type { EmulatorInput, NativeEmulator } from "./native-emulator";
 
 interface KeyboardInputBinding {
@@ -47,6 +47,7 @@ const CONTROL_INPUTS: Partial<Record<ControlAction, EmulatorInput>> = {
   fastDrop: "down",
   fire: "action1",
   jump: "action1",
+  jumpUp: "up",
   left: "left",
   right: "right",
   rotate: "action1",
@@ -68,6 +69,7 @@ export class InputRouter {
   private readonly activeKeys = new Map<string, EmulatorInput | null>();
   private readonly keyboardDisposers: Array<() => void> = [];
   private readonly sustainTimers = new Map<EmulatorInput, ReturnType<typeof setInterval>>();
+  private controllerProfile: ControllerProfile | null = null;
 
   constructor(private readonly emulator: NativeEmulator) {}
 
@@ -100,6 +102,15 @@ export class InputRouter {
     if (sequence) {
       void this.tapInputSequence(sequence);
     }
+  }
+
+  setControllerProfile(profile: ControllerProfile | null): void {
+    if (this.controllerProfile?.id === profile?.id) {
+      return;
+    }
+
+    this.releaseAll();
+    this.controllerProfile = profile;
   }
 
   releaseControl(action: ControlAction): void {
@@ -159,7 +170,7 @@ export class InputRouter {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
-    const binding = getKeyboardInput(event);
+    const binding = this.getKeyboardInput(event);
     if (!binding) {
       return;
     }
@@ -205,6 +216,35 @@ export class InputRouter {
     this.releaseControl(action);
   }
 
+  private getKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {
+    return this.getProfileKeyboardInput(event) ?? getDefaultKeyboardInput(event);
+  }
+
+  private getProfileKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {
+    if (!this.controllerProfile) {
+      return null;
+    }
+
+    const eventKeys = getKeyboardEventKeys(event);
+    const button = this.controllerProfile.buttons.find(
+      (candidate) =>
+        !candidate.inactive &&
+        getKeyboardActionKeys(candidate.action).some((key) => eventKeys.has(key.toLowerCase()))
+    );
+
+    if (!button) {
+      return null;
+    }
+
+    const input = CONTROL_INPUTS[button.action];
+    const sequence = CONTROL_SEQUENCES[button.action];
+    if (!input && !sequence) {
+      return null;
+    }
+
+    return { code: event.code, input, key: event.key, sequence };
+  }
+
   private async tapInputSequence(inputs: EmulatorInput[], durationMs = 80, gapMs = 70): Promise<void> {
     for (const input of inputs) {
       this.press(input);
@@ -242,11 +282,23 @@ export class InputRouter {
   }
 }
 
-function getKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {
+function getDefaultKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {
   const code = event.code;
   const key = event.key.toLowerCase();
   const binding = KEYBOARD_INPUTS.find((candidate) => candidate.code === code || candidate.key === key);
   return binding ?? null;
+}
+
+function getKeyboardEventKeys(event: KeyboardEvent): Set<string> {
+  const keys = new Set([event.key.toLowerCase(), event.code.toLowerCase()]);
+
+  if (event.code.startsWith("Key")) {
+    keys.add(event.code.slice(3).toLowerCase());
+  } else if (event.code.startsWith("Digit")) {
+    keys.add(event.code.slice(5));
+  }
+
+  return keys;
 }
 
 function getKeyboardEventId(event: KeyboardEvent): string {

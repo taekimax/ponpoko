@@ -50,8 +50,8 @@ const games = [
     inactiveButtons: 4,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "jump", selector: '[data-touch-surface="virtual"] [data-action="jump"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "attack", selector: '[data-touch-surface="virtual"] [data-action="attack"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "bubble shot", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
+      { expectedInput: 4, keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] .virtual-game-button[data-action="jumpUp"]' }
     ],
     minFrame: 120,
     romFile: "bublbobl.zip",

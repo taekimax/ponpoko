@@ -3,6 +3,7 @@ import type { ControlAction } from "../controllers";
 export type ControllerProfileId =
   | "platformJump"
   | "platformFire"
+  | "bubbleBobble"
   | "puzzleShoot"
   | "arcadeTwoButton"
   | "arcadeThreeButton"

@@ -138,6 +138,7 @@ function renderMenu(): void {
   stopBootDebugPanel();
   stopManualStateStatusTimer();
   input.releaseAll();
+  input.setControllerProfile(null);
   app.innerHTML = `
     <main class="app-shell menu-shell">
       <section class="menu-header">
@@ -198,6 +199,7 @@ function renderLoading(game: GameEntry, progress: number, message: string): void
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
   stopManualStateStatusTimer();
+  input.setControllerProfile(null);
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="loading-panel" aria-live="polite">
@@ -225,6 +227,7 @@ function renderAutosaveChoice(game: GameEntry, autosave: AutosaveRecord): void {
   stopBootDebugPanel();
   stopManualStateStatusTimer();
   input.releaseAll();
+  input.setControllerProfile(null);
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="error-panel autosave-choice-panel" data-autosave-choice>
@@ -263,6 +266,7 @@ function formatAutosaveSavedAt(savedAt: number): string {
 
 function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): void {
   const profile = getControllerProfile(game);
+  input.setControllerProfile(profile);
   const isVerticalGame = game.screenOrientation === "vertical";
   const shellClassName = isVerticalGame
     ? "app-shell play-shell is-vertical-game"
@@ -467,6 +471,7 @@ function renderError(game: GameEntry, message: string, startMode: AutosaveStartM
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopManualStateStatusTimer();
+  input.setControllerProfile(null);
   app.innerHTML = `
     <main class="app-shell play-shell">
       <section class="error-panel">

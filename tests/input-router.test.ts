@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CONTROL_PROFILES } from "../src/controllers";
 import { FakeNativeEmulator, type EmulatorInput } from "../src/native-emulator";
 import { InputRouter } from "../src/input";
 
@@ -95,6 +96,26 @@ describe("InputRouter", () => {
       { input: "action1", type: "release" },
       { input: "action1", type: "press" },
       { input: "action1", type: "release" }
+    ]);
+  });
+
+  it("uses the active controller profile for game-specific keyboard actions", () => {
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    router.setControllerProfile(CONTROL_PROFILES.bubbleBobble);
+    router.attachKeyboard(target);
+
+    router.pressControl("jumpUp");
+    router.releaseControl("jumpUp");
+    target.dispatchEvent(keyboardEvent("keydown", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
+
+    expect(emulator.inputCalls).toEqual([
+      { input: "up", type: "press" },
+      { input: "up", type: "release" },
+      { input: "up", type: "press" },
+      { input: "up", type: "release" }
     ]);
   });
 

@@ -86,6 +86,32 @@ describe("controller profiles", () => {
     ]);
   });
 
+  it("maps Bubble Bobble actions to bubble shot and jump inputs", () => {
+    const profile = getControllerProfile(CATALOG.find((game) => game.id === "bublbobl")!);
+
+    expect(profile.id).toBe("bubbleBobble");
+    expect(profile.buttons.map((button) => ({
+      action: button.action,
+      inactive: Boolean((button as { inactive?: boolean }).inactive),
+      label: button.label
+    }))).toEqual([
+      { action: "fire", inactive: false, label: "발사" },
+      { action: "jumpUp", inactive: false, label: "점프" },
+      { action: "button3", inactive: true, label: "·" },
+      { action: "button4", inactive: true, label: "·" },
+      { action: "button5", inactive: true, label: "·" },
+      { action: "button6", inactive: true, label: "·" }
+    ]);
+    expect(getKeyboardControlHints(profile)).toEqual([
+      { id: "move", keys: ["←", "↑", "↓", "→"], label: "이동" },
+      { id: "button-1", keys: ["Q"], label: "발사" },
+      { id: "button-2", keys: ["W"], label: "점프" },
+      { id: "coin", keys: ["5"], label: "동전" },
+      { id: "ok", keys: ["O"], label: "OK" },
+      { id: "play", keys: ["Enter", "P"], label: "플레이" }
+    ]);
+  });
+
   it("resolves diagonal D-pad vectors as paired cardinal presses for 8-way profiles", () => {
     expect(resolveDpadActions("eightWay", 1, -1)).toEqual(["up", "right"]);
     expect(resolveDpadActions("eightWay", 1, 1)).toEqual(["right", "down"]);

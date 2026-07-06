@@ -6,6 +6,7 @@ export type ControlAction =
   | "up"
   | "down"
   | "jump"
+  | "jumpUp"
   | "attack"
   | "special"
   | "action"
@@ -137,6 +138,22 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
     buttons: createUniversalButtons([
       { action: "jump", label: "점프", tone: "primary" },
       { action: "attack", label: "공격", tone: "secondary" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" }
+    ])
+  },
+  bubbleBobble: {
+    dpadMode: "fourWay",
+    id: "bubbleBobble",
+    label: "D패드 + 6버튼",
+    hint: "왼쪽 D패드 이동 · 오른쪽 발사/점프",
+    zonePlacement: "virtualStick",
+    zones: UNIVERSAL_DPAD_ZONES,
+    buttons: createUniversalButtons([
+      { action: "fire", label: "발사", tone: "primary" },
+      { action: "jumpUp", label: "점프", tone: "secondary" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
@@ -305,12 +322,28 @@ function getKeyboardActionHints(profile: ControllerProfile): KeyboardControlHint
   }));
 }
 
-function getKeyboardActionKeys(action: ControlAction): string[] {
+export function getKeyboardActionKeys(action: ControlAction): string[] {
+  if (action === "up") {
+    return ["↑"];
+  }
+
+  if (action === "down") {
+    return ["↓"];
+  }
+
+  if (action === "left") {
+    return ["←"];
+  }
+
+  if (action === "right") {
+    return ["→"];
+  }
+
   if (action === "button1" || action === "fire" || action === "jump" || action === "action" || action === "rotate") {
     return ["Q"];
   }
 
-  if (action === "button2" || action === "attack" || action === "wire") {
+  if (action === "button2" || action === "attack" || action === "wire" || action === "jumpUp") {
     return ["W"];
   }
 

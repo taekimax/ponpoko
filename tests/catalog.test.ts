@@ -62,7 +62,7 @@ describe("static game catalog", () => {
     const bubbleBobble = CATALOG.find((game) => game.id === "bublbobl");
 
     expect(bubbleBobble).toMatchObject({
-      controllerProfile: "platformFire",
+      controllerProfile: "bubbleBobble",
       core: "mame2003_plus",
       romFile: "bublbobl.zip",
       runtimeDebug: expect.objectContaining({

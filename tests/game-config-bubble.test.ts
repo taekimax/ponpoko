@@ -8,7 +8,7 @@ describe("Bubble Bobble game configuration", () => {
       id: "bublbobl",
       romFile: "bublbobl.zip",
       thumbnailFile: "bubbobr1.jpg",
-      controllerProfile: "platformFire"
+      controllerProfile: "bubbleBobble"
     });
   });
 

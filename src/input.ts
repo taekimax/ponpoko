@@ -63,6 +63,7 @@ const CONTROL_SEQUENCES: Partial<Record<ControlAction, EmulatorInput[]>> = {
 
 const SUSTAINED_INPUTS = new Set<EmulatorInput>(["left", "right"]);
 const SUSTAIN_INTERVAL_MS = 120;
+const KEYBOARD_LISTENER_OPTIONS = { capture: true };
 
 export class InputRouter {
   private readonly activeInputCounts = new Map<EmulatorInput, number>();
@@ -78,13 +79,13 @@ export class InputRouter {
     const keyup = (event: Event) => this.handleKeyUp(event as KeyboardEvent);
     const blur = () => this.releaseAll();
 
-    target.addEventListener("keydown", keydown);
-    target.addEventListener("keyup", keyup);
+    target.addEventListener("keydown", keydown, KEYBOARD_LISTENER_OPTIONS);
+    target.addEventListener("keyup", keyup, KEYBOARD_LISTENER_OPTIONS);
     target.addEventListener("blur", blur);
 
     const dispose = () => {
-      target.removeEventListener("keydown", keydown);
-      target.removeEventListener("keyup", keyup);
+      target.removeEventListener("keydown", keydown, KEYBOARD_LISTENER_OPTIONS);
+      target.removeEventListener("keyup", keyup, KEYBOARD_LISTENER_OPTIONS);
       target.removeEventListener("blur", blur);
     };
     this.keyboardDisposers.push(dispose);
@@ -175,7 +176,7 @@ export class InputRouter {
       return;
     }
 
-    event.preventDefault();
+    consumeKeyboardEvent(event);
     const keyId = getKeyboardEventId(event);
     if (event.repeat || this.activeKeys.has(keyId)) {
       return;
@@ -197,7 +198,7 @@ export class InputRouter {
       return;
     }
 
-    event.preventDefault();
+    consumeKeyboardEvent(event);
     this.activeKeys.delete(keyId);
     if (input) {
       this.release(input);
@@ -228,12 +229,15 @@ export class InputRouter {
     const eventKeys = getKeyboardEventKeys(event);
     const button = this.controllerProfile.buttons.find(
       (candidate) =>
-        !candidate.inactive &&
         getKeyboardActionKeys(candidate.action).some((key) => eventKeys.has(key.toLowerCase()))
     );
 
     if (!button) {
       return null;
+    }
+
+    if (button.inactive) {
+      return { code: event.code, key: event.key };
     }
 
     const input = CONTROL_INPUTS[button.action];
@@ -280,6 +284,11 @@ export class InputRouter {
     globalThis.clearInterval(timer);
     this.sustainTimers.delete(input);
   }
+}
+
+function consumeKeyboardEvent(event: KeyboardEvent): void {
+  event.preventDefault();
+  event.stopImmediatePropagation();
 }
 
 function getDefaultKeyboardInput(event: KeyboardEvent): KeyboardInputBinding | null {

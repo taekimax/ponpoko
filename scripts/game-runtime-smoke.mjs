@@ -51,7 +51,10 @@ const games = [
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "bubble shot", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
-      { expectedInput: 4, keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] .virtual-game-button[data-action="jumpUp"]' }
+      { expectedInput: 4, forbiddenInputs: [1, 8], keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] .virtual-game-button[data-action="jumpUp"]' }
+    ],
+    blockedInputChecks: [
+      { keyboard: "KeyE", label: "inactive button 3" }
     ],
     minFrame: 120,
     romFile: "bublbobl.zip",
@@ -320,13 +323,36 @@ async function verifyGame(target, game) {
       await triggerControl(page, target, check);
       const inputCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
       assertInputPair(inputCalls, check.expectedInput, `${target.label} ${game.id} ${check.label}`);
+      assertForbiddenInputs(inputCalls, check.forbiddenInputs ?? [], `${target.label} ${game.id} ${check.label}`);
       await page.evaluate(() => {
         window.__gameSmokeInputCalls = [];
       });
     }
+    await assertBlockedKeyboardInputs(page, target, game);
     await assertDiagonalDpadInput(page, target, game);
   } finally {
     await context.close();
+  }
+}
+
+async function assertBlockedKeyboardInputs(page, target, game) {
+  if (target.inputMode !== "keyboard") {
+    return;
+  }
+
+  for (const check of game.blockedInputChecks ?? []) {
+    await page.evaluate(() => {
+      window.__gameSmokeInputCalls = [];
+    });
+    await page.keyboard.down(check.keyboard);
+    await page.waitForTimeout(120);
+    await page.keyboard.up(check.keyboard);
+    await page.waitForTimeout(120);
+    const inputCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+    const nonStartupCalls = inputCalls.filter((call) => call.input !== 2 && call.input !== 3);
+    if (nonStartupCalls.length > 0) {
+      throw new Error(`${target.label} ${game.id} ${check.label} should not send gameplay input: ${JSON.stringify(inputCalls)}`);
+    }
   }
 }
 
@@ -810,6 +836,13 @@ function assertInputPair(calls, input, label) {
   const released = calls.some((call) => call.input === input && call.pressed === 0);
   if (!pressed || !released) {
     throw new Error(`${label} control did not send input ${input}: ${JSON.stringify(calls)}`);
+  }
+}
+
+function assertForbiddenInputs(calls, inputs, label) {
+  const forbiddenCalls = calls.filter((call) => inputs.includes(call.input));
+  if (forbiddenCalls.length > 0) {
+    throw new Error(`${label} sent forbidden input(s) ${inputs.join(", ")}: ${JSON.stringify(calls)}`);
   }
 }
 

@@ -119,6 +119,47 @@ describe("InputRouter", () => {
     ]);
   });
 
+  it("stops handled profile keyboard events before native emulator listeners", () => {
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    const nativeKeydown = vi.fn();
+    const nativeKeyup = vi.fn();
+    router.setControllerProfile(CONTROL_PROFILES.bubbleBobble);
+    router.attachKeyboard(target);
+    target.addEventListener("keydown", nativeKeydown);
+    target.addEventListener("keyup", nativeKeyup);
+
+    target.dispatchEvent(keyboardEvent("keydown", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
+
+    expect(nativeKeydown).not.toHaveBeenCalled();
+    expect(nativeKeyup).not.toHaveBeenCalled();
+    expect(emulator.inputCalls).toEqual([
+      { input: "up", type: "press" },
+      { input: "up", type: "release" }
+    ]);
+  });
+
+  it("consumes inactive profile button keys without sending hidden inputs", () => {
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    const nativeKeydown = vi.fn();
+    const nativeKeyup = vi.fn();
+    router.setControllerProfile(CONTROL_PROFILES.bubbleBobble);
+    router.attachKeyboard(target);
+    target.addEventListener("keydown", nativeKeydown);
+    target.addEventListener("keyup", nativeKeyup);
+
+    target.dispatchEvent(keyboardEvent("keydown", "KeyE", "e"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyE", "e"));
+
+    expect(nativeKeydown).not.toHaveBeenCalled();
+    expect(nativeKeyup).not.toHaveBeenCalled();
+    expect(emulator.inputCalls).toEqual([]);
+  });
+
   it("releases all active inputs on blur and dispose", () => {
     const emulator = new FakeNativeEmulator();
     const target = new EventTarget();

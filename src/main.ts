@@ -583,9 +583,6 @@ function wireControls(root: HTMLElement): void {
     }
 
     element.addEventListener("pointerdown", (event) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
       event.preventDefault();
       if (isControlDisabled(element)) {
         return;
@@ -599,9 +596,6 @@ function wireControls(root: HTMLElement): void {
     });
 
     const release = (event: PointerEvent) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
       event.preventDefault();
       endControlPress(`${POINTER_PREFIX}${event.pointerId}`, activePointers);
     };
@@ -609,6 +603,10 @@ function wireControls(root: HTMLElement): void {
     element.addEventListener("pointerup", release);
     element.addEventListener("pointercancel", release);
     element.addEventListener("pointerleave", release);
+
+    if (supportsPointerEvents()) {
+      return;
+    }
 
     element.addEventListener(
       "touchstart",
@@ -653,9 +651,6 @@ function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, Active
     const mode = readDpadMode(stick);
 
     stick.addEventListener("pointerdown", (event) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
       event.preventDefault();
       updateDpadPress(
         `${POINTER_PREFIX}${event.pointerId}`,
@@ -669,9 +664,6 @@ function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, Active
     });
 
     stick.addEventListener("pointermove", (event) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
       const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
       if (!activePointers.has(pointerId)) {
         return;
@@ -681,9 +673,6 @@ function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, Active
     });
 
     const releasePointer = (event: PointerEvent) => {
-      if (event.pointerType === "touch") {
-        return;
-      }
       event.preventDefault();
       endControlPress(`${POINTER_PREFIX}${event.pointerId}`, activePointers);
     };
@@ -691,6 +680,10 @@ function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, Active
     stick.addEventListener("pointerup", releasePointer);
     stick.addEventListener("pointercancel", releasePointer);
     stick.addEventListener("pointerleave", releasePointer);
+
+    if (supportsPointerEvents()) {
+      return;
+    }
 
     const updateTouches = (event: TouchEvent) => {
       event.preventDefault();
@@ -719,6 +712,10 @@ function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, Active
     stick.addEventListener("touchend", releaseTouch, { passive: false });
     stick.addEventListener("touchcancel", releaseTouch, { passive: false });
   });
+}
+
+function supportsPointerEvents(): boolean {
+  return typeof window.PointerEvent === "function";
 }
 
 function wireStateSlotControls(root: HTMLElement): void {

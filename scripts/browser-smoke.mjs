@@ -143,7 +143,7 @@ try {
   await page.locator('[data-game-id="ponpoko"]').click();
   await page.locator("[data-autosave-choice]").waitFor({ timeout: 5_000 });
   await page.locator("[data-start-new]").click();
-  await page.getByText("ROM 다운로드 중").waitFor({ timeout: 5_000 });
+  await waitForRomDownloadOrNextStep(page);
   const loadingAnimationVisible = await page.locator(".loading-panel .pixel-loader").count();
   if (loadingAnimationVisible > 0) {
     throw new Error("Loading screen should not render the top pixel-loader animation");
@@ -789,7 +789,6 @@ try {
   await holdControl(page, "left", 650);
   const leftHoldCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
   assertInputPair(leftHoldCalls, 6, "left hold");
-  assertMinimumPresses(leftHoldCalls, 6, "left hold", 3);
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
@@ -859,17 +858,25 @@ try {
   assertInputPair(inputCalls, 6, "touchscreen left tap");
   assertInputPair(inputCalls, 0, "touchscreen jump tap");
   assertInputPair(inputCalls, 7, "touchscreen right tap");
+  await assertSimultaneousTouchControls(page, {
+    actionInput: 0,
+    actionName: "jump",
+    directionInput: 6,
+    directionName: "left",
+    label: "touchscreen left plus jump"
+  });
 
   const frameBeforeKeyboard = await page.evaluate(() => window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0);
   await page.evaluate(() => {
     window.__smokeInputCalls = [];
   });
   await page.keyboard.down("ArrowLeft");
-  await page.waitForTimeout(180);
-  await page.keyboard.up("ArrowLeft");
+  await page.waitForTimeout(120);
   await page.keyboard.down("KeyQ");
   await page.waitForTimeout(120);
   await page.keyboard.up("KeyQ");
+  await page.waitForTimeout(80);
+  await page.keyboard.up("ArrowLeft");
   await page.keyboard.press("Digit5");
   await page.keyboard.press("Enter");
   await page.keyboard.press("KeyO");
@@ -877,6 +884,7 @@ try {
   const keyboardInputCalls = await page.evaluate(() => window.__smokeInputCalls ?? []);
   assertInputPair(keyboardInputCalls, 6, "keyboard left");
   assertInputPair(keyboardInputCalls, 0, "keyboard jump");
+  assertInputChord(keyboardInputCalls, 6, 0, "keyboard left plus jump");
   assertInputPair(keyboardInputCalls, 2, "keyboard coin");
   assertInputPair(keyboardInputCalls, 3, "keyboard play");
   assertInputPair(keyboardInputCalls, 7, "keyboard OK");
@@ -1198,6 +1206,70 @@ async function tapLocator(page, locator, label, settleMs = 180) {
   await page.waitForTimeout(settleMs);
 }
 
+async function waitForRomDownloadOrNextStep(page) {
+  await page.waitForFunction(() => {
+    const bodyText = document.body.textContent ?? "";
+    const statusText = document.querySelector("[data-game-status]")?.textContent ?? "";
+    return bodyText.includes("ROM 다운로드 중") ||
+      /다운로드 완료|게임 시작/.test(statusText) ||
+      bodyText.includes("에뮬레이터 준비 중");
+  }, { timeout: 5_000 });
+}
+
+async function assertSimultaneousTouchControls(page, options) {
+  await page.evaluate(() => {
+    window.__smokeInputCalls = [];
+  });
+
+  await dispatchPointerControl(page, options.directionName, "pointerdown", 101);
+  await page.waitForTimeout(120);
+  await dispatchPointerControl(page, options.actionName, "pointerdown", 102);
+  await page.waitForTimeout(120);
+  await dispatchPointerControl(page, options.actionName, "pointerup", 102);
+  await page.waitForTimeout(80);
+  await dispatchPointerControl(page, options.directionName, "pointerup", 101);
+  await page.waitForTimeout(120);
+
+  const calls = await page.evaluate(() => window.__smokeInputCalls ?? []);
+  assertInputPair(calls, options.directionInput, `${options.label} direction`);
+  assertInputPair(calls, options.actionInput, `${options.label} action`);
+  assertInputChord(calls, options.directionInput, options.actionInput, options.label);
+}
+
+async function dispatchPointerControl(page, action, type, pointerId) {
+  const box = await page.locator(`[data-touch-surface="virtual"] [data-action="${action}"]`).first().boundingBox();
+  if (!box) {
+    throw new Error(`Control ${action} was not found`);
+  }
+
+  await page.evaluate(({ action, pointerId, type, x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    if (!target) {
+      throw new Error(`No target at ${x}, ${y} for ${action}`);
+    }
+
+    const event = new PointerEvent(type, {
+      bubbles: true,
+      button: 0,
+      buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      composed: true,
+      isPrimary: pointerId === 101,
+      pointerId,
+      pointerType: "touch"
+    });
+    target.dispatchEvent(event);
+  }, {
+    action,
+    pointerId,
+    type,
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2
+  });
+}
+
 function assertInputPair(calls, input, label) {
   const pressed = calls.some((call) => call.input === input && call.pressed === 1);
   const released = calls.some((call) => call.input === input && call.pressed === 0);
@@ -1206,10 +1278,19 @@ function assertInputPair(calls, input, label) {
   }
 }
 
-function assertMinimumPresses(calls, input, label, minimum) {
-  const pressCount = calls.filter((call) => call.input === input && call.pressed === 1).length;
-  if (pressCount < minimum) {
-    throw new Error(`${label} did not sustain input ${input}; expected ${minimum} presses, got ${pressCount}: ${JSON.stringify(calls)}`);
+function assertInputChord(calls, directionInput, actionInput, label) {
+  const directionPressIndex = calls.findIndex((call) => call.input === directionInput && call.pressed === 1);
+  const actionPressIndex = calls.findIndex((call) => call.input === actionInput && call.pressed === 1);
+  const directionReleaseIndex = calls.findIndex((call) => call.input === directionInput && call.pressed === 0);
+
+  if (
+    directionPressIndex === -1 ||
+    actionPressIndex === -1 ||
+    directionReleaseIndex === -1 ||
+    directionPressIndex > actionPressIndex ||
+    actionPressIndex > directionReleaseIndex
+  ) {
+    throw new Error(`${label} did not keep direction active through action press: ${JSON.stringify(calls)}`);
   }
 }
 

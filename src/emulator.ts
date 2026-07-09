@@ -701,6 +701,10 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   press(input: EmulatorInput): void {
+    if (this.activeInputs.has(input)) {
+      return;
+    }
+
     this.activeInputs.add(input);
     this.sendInput(input, 1);
   }

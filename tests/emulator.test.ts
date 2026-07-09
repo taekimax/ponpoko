@@ -279,6 +279,34 @@ describe("EmulatorJS startup configuration", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps simultaneous EmulatorJS inputs active without resending held directions", () => {
+    const simulateInput = vi.fn();
+    vi.stubGlobal("window", {
+      EJS_emulator: {
+        gameManager: {
+          simulateInput
+        }
+      }
+    });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    emulator.press("left");
+    emulator.press("left");
+    emulator.press("action1");
+    emulator.release("action1");
+    emulator.release("left");
+    emulator.release("left");
+
+    expect(simulateInput).toHaveBeenCalledTimes(4);
+    expect(simulateInput.mock.calls).toEqual([
+      [0, 6, 1],
+      [0, 0, 1],
+      [0, 0, 0],
+      [0, 6, 0]
+    ]);
+    vi.unstubAllGlobals();
+  });
+
   it("captures and restores EmulatorJS runtime states through the game manager", async () => {
     const state = new Uint8Array([1, 2, 3]);
     const gameManager = {

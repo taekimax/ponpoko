@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG } from "../src/catalog";
 import {
+  type ControlAction,
   CONTROL_PROFILES,
   SPECIAL_CONTROLS,
   getControllerProfile,
+  getKeyboardActionKeys,
   getKeyboardControlHints,
   resolveDpadActions
 } from "../src/controllers";
@@ -69,6 +71,98 @@ describe("controller profiles", () => {
 
     for (const game of CATALOG) {
       expect(getControllerProfile(game).dpadMode).toBe(modesByGame.get(game.id));
+    }
+  });
+
+  it("matches every catalog game's onscreen buttons to labels, keys, actions, and emulator inputs", () => {
+    const expectedButtonsByGame = new Map([
+      ["ponpoko", [
+        expectedButton("점프", "jump", false, 0),
+        expectedButton("·", "button2", true, 1),
+        expectedButton("·", "button3", true, 8),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]],
+      ["pbobble", [
+        expectedButton("발사", "fire", false, 0),
+        expectedButton("와이어", "wire", false, 1),
+        expectedButton("·", "button3", true, 8),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]],
+      ["spang", [
+        expectedButton("발사", "fire", false, 0),
+        expectedButton("와이어", "wire", false, 1),
+        expectedButton("·", "button3", true, 8),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]],
+      ["bublbobl", [
+        expectedButton("발사", "fire", false, 0),
+        expectedButton("점프", "jumpUp", false, 4),
+        expectedButton("·", "button3", true, 8),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]],
+      ["snes_smwk", [
+        expectedButton("B", "button1", false, 0),
+        expectedButton("Y", "button2", false, 1),
+        expectedButton("A", "button3", false, 8),
+        expectedButton("X", "button4", false, 9),
+        expectedButton("L", "button5", false, 10),
+        expectedButton("R", "button6", false, 11)
+      ]],
+      ["sf2ce", [
+        expectedButton("LP", "button1", false, 0),
+        expectedButton("MP", "button2", false, 1),
+        expectedButton("HP", "button3", false, 8),
+        expectedButton("LK", "button4", false, 9),
+        expectedButton("MK", "button5", false, 10),
+        expectedButton("HK", "button6", false, 11)
+      ]],
+      ["wofj_korean_v1_20", [
+        expectedButton("A", "button1", false, 0),
+        expectedButton("B", "button2", false, 1),
+        expectedButton("C", "button3", false, 8),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]]
+    ]);
+
+    for (const game of CATALOG) {
+      const profile = getControllerProfile(game);
+      const expectedButtons = expectedButtonsByGame.get(game.id);
+      const hintsById = new Map(getKeyboardControlHints(profile).map((hint) => [hint.id, hint]));
+
+      expect(expectedButtons, game.id).toBeDefined();
+      expect(profile.buttons).toHaveLength(expectedButtons!.length);
+
+      profile.buttons.forEach((button, index) => {
+        const expected = expectedButtons![index];
+        expect({
+          action: button.action,
+          emulatorInput: getEmulatorInputId(button.action),
+          inactive: Boolean(button.inactive),
+          key: getKeyboardActionKeys(button.action)[0],
+          label: button.label
+        }).toEqual(expected);
+
+        const hint = hintsById.get(button.id);
+        if (expected.inactive) {
+          expect(hint, `${game.id} ${button.id}`).toBeUndefined();
+        } else {
+          expect(hint, `${game.id} ${button.id}`).toEqual({
+            id: button.id,
+            keys: [expected.key],
+            label: expected.label
+          });
+        }
+      });
     }
   });
 
@@ -173,3 +267,53 @@ describe("controller profiles", () => {
     ]);
   });
 });
+
+function expectedButton(
+  label: string,
+  action: ControlAction,
+  inactive: boolean,
+  emulatorInput: number
+): {
+  action: ControlAction;
+  emulatorInput: number;
+  inactive: boolean;
+  key: string;
+  label: string;
+} {
+  return {
+    action,
+    emulatorInput,
+    inactive,
+    key: getKeyboardActionKeys(action)[0],
+    label
+  };
+}
+
+function getEmulatorInputId(action: ControlAction): number {
+  const inputs: Partial<Record<ControlAction, number>> = {
+    action: 0,
+    attack: 1,
+    button1: 0,
+    button2: 1,
+    button3: 8,
+    button4: 9,
+    button5: 10,
+    button6: 11,
+    down: 5,
+    fastDrop: 5,
+    fire: 0,
+    jump: 0,
+    jumpUp: 4,
+    left: 6,
+    right: 7,
+    rotate: 0,
+    special: 8,
+    up: 4,
+    wire: 1
+  };
+  const input = inputs[action];
+  if (input === undefined) {
+    throw new Error(`No emulator input mapping for ${action}`);
+  }
+  return input;
+}

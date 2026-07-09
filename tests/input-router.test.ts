@@ -99,6 +99,26 @@ describe("InputRouter", () => {
     ]);
   });
 
+  it("keeps desktop direction input active while a profile action key is pressed", () => {
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    router.setControllerProfile(CONTROL_PROFILES.platformJump);
+    router.attachKeyboard(target);
+
+    target.dispatchEvent(keyboardEvent("keydown", "ArrowLeft", "ArrowLeft"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyQ", "q"));
+    target.dispatchEvent(keyboardEvent("keyup", "ArrowLeft", "ArrowLeft"));
+
+    expect(emulator.inputCalls).toEqual([
+      { input: "left", type: "press" },
+      { input: "action1", type: "press" },
+      { input: "action1", type: "release" },
+      { input: "left", type: "release" }
+    ]);
+  });
+
   it("uses the active controller profile for game-specific keyboard actions", () => {
     const emulator = new FakeNativeEmulator();
     const target = new EventTarget();

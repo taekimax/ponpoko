@@ -4,12 +4,13 @@ import { CATALOG, ROM_BASE_PATH, getRomPath, resolveRomPath } from "../src/catal
 describe("static game catalog", () => {
   it("supports the local-ROM games with fixed ROM paths", () => {
     expect(ROM_BASE_PATH).toBe("/ponpoko/roms/");
-    expect(CATALOG).toHaveLength(7);
+    expect(CATALOG).toHaveLength(8);
     expect(CATALOG.map((game) => game.romFile)).toEqual([
       "ponpoko.zip",
       "pbobble.zip",
       "spang.zip",
       "bublbobl.zip",
+      "mslug.zip",
       "snes_smwk.zip",
       "sf2ce.zip",
       "wofj.zip"
@@ -24,15 +25,17 @@ describe("static game catalog", () => {
       "pbobble",
       "spang",
       "bublbobl",
+      "mslug",
       "snes_smwk",
       "sf2ce",
       "wofj_korean_v1_20"
     ]);
   });
 
-  it("does not expose removed Metal Slug or Strikers catalog entries", () => {
-    expect(CATALOG.map((game) => game.id)).not.toEqual(expect.arrayContaining(["mslug", "s1945"]));
-    expect(CATALOG.map((game) => game.romFile)).not.toEqual(expect.arrayContaining(["mslug.zip", "s1945.zip"]));
+  it("exposes Metal Slug without restoring Strikers 1945", () => {
+    expect(CATALOG.map((game) => game.id)).toContain("mslug");
+    expect(CATALOG.map((game) => game.id)).not.toContain("s1945");
+    expect(CATALOG.map((game) => game.romFile)).not.toContain("s1945.zip");
   });
 
   it("loads Super Mario World through the SNES9x core instead of the NSS MAME set", () => {
@@ -74,6 +77,28 @@ describe("static game catalog", () => {
     expect(bubbleBobble?.romVersion).toBe("c23a70a5f12e695fec513fee682441accba5ea44a811ff43289ed894ec8ce505");
     expect(getRomPath(bubbleBobble!)).toBe(
       "/ponpoko/roms/bublbobl.zip?v=c23a70a5f12e695fec513fee682441accba5ea44a811ff43289ed894ec8ce505"
+    );
+  });
+
+  it("loads Metal Slug through FBNeo with the verified ROM and Neo Geo parent BIOS", () => {
+    const metalSlug = CATALOG.find((game) => game.id === "mslug");
+
+    expect(metalSlug).toMatchObject({
+      controllerProfile: "arcadeThreeButton",
+      core: "fbneo",
+      emulator: expect.objectContaining({
+        forceLegacyCores: true,
+        parentRomFile: "neogeo.zip",
+        parentRomVersion: "bef93f5f254f3dbcc38afe033919f4e22502beca92877fad42a10729f3de1274"
+      }),
+      runtimeDebug: expect.objectContaining({
+        coreDataFragment: "/emulatorjs/cores/fbneo-legacy-wasm.data"
+      }),
+      titleEn: "Metal Slug"
+    });
+    expect(metalSlug?.romVersion).toBe("3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8");
+    expect(getRomPath(metalSlug!)).toBe(
+      "/ponpoko/roms/mslug.zip?v=3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8"
     );
   });
 

@@ -11,6 +11,8 @@ const appUrl = new URL("?bootDebug=1", baseUrl).href;
 const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
 const requestedGameId = process.env.GAME_RUNTIME_SMOKE_GAME;
 const requestedTargetLabel = process.env.GAME_RUNTIME_SMOKE_TARGET;
+const screenshotDirectory = process.env.GAME_RUNTIME_SMOKE_SCREENSHOT_DIR;
+const visualBaselines = new Map();
 const games = [
   {
     id: "pbobble",
@@ -60,6 +62,33 @@ const games = [
     title: "보글보글",
     videoHeight: 224,
     videoWidth: 256
+  },
+  {
+    core: "fbneo",
+    dpadMode: "eightWay",
+    advanceTutorial: true,
+    id: "mslug",
+    inactiveButtons: 3,
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "A", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 8, keyboard: "KeyW", label: "B", selector: '[data-touch-surface="virtual"] [data-action="button2"]' },
+      { expectedInput: 1, keyboard: "KeyE", label: "C", selector: '[data-touch-surface="virtual"] [data-action="button3"]' }
+    ],
+    minFrame: 600,
+    minColorBins: 64,
+    minVisiblePixelRatio: 0.08,
+    parentRomFile: "neogeo.zip",
+    parentRomVersion: "bef93f5f254f3dbcc38afe033919f4e22502beca92877fad42a10729f3de1274",
+    romFile: "mslug.zip",
+    romByteLength: 13_165_412,
+    romVersion: "3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8",
+    title: "메탈 슬러그",
+    rejectTutorialScreen: true,
+    verifyRomCacheReuse: true,
+    videoHeight: 224,
+    videoWidth: 304,
+    visibleRegion: { xEnd: 0.95, xStart: 0.05, yEnd: 0.62, yStart: 0.03 }
   },
   {
     core: "snes9x",
@@ -197,6 +226,12 @@ async function verifyGame(target, game) {
     : null;
   const context = await target.browser.newContext(target.contextOptions);
   const page = await context.newPage();
+  const romNetworkRequests = [];
+  context.on("request", (request) => {
+    if (request.url() === expectedRomUrl) {
+      romNetworkRequests.push(request.url());
+    }
+  });
 
   try {
     await page.addInitScript(() => {
@@ -310,12 +345,40 @@ async function verifyGame(target, game) {
       return (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= minFrame;
     }, game.minFrame, { timeout: 60_000 });
     await page.locator("[data-game-status]").getByText("플레이 중").waitFor({ timeout: 10_000 });
-    const activeStageScreenshot = await page.locator(".game-stage").screenshot();
+    if (game.advanceTutorial) {
+      await advanceMetalSlugTutorial(page, target, game);
+    }
+    const screenshotPath = screenshotDirectory
+      ? `${screenshotDirectory}/${target.label.replaceAll(" ", "-")}-${game.id}.png`
+      : undefined;
+    const activeStageScreenshot = await page.locator(".game-stage").screenshot(
+      screenshotPath ? { path: screenshotPath } : undefined
+    );
     if (hasRetroArchMainMenu(activeStageScreenshot)) {
       throw new Error(`${target.label} ${game.id} still shows the RetroArch main menu instead of gameplay`);
     }
+    if (game.rejectTutorialScreen && hasMetalSlugTutorial(activeStageScreenshot)) {
+      throw new Error(`${target.label} ${game.id} did not advance beyond the HOW TO PLAY tutorial`);
+    }
     if (game.visibleRegion && visiblePixelRatio(activeStageScreenshot, game.visibleRegion) < game.minVisiblePixelRatio) {
       throw new Error(`${target.label} ${game.id} did not render visible gameplay pixels by frame ${game.minFrame}`);
+    }
+    if (game.minColorBins) {
+      const visual = gameplayVisualSignature(activeStageScreenshot, game.visibleRegion);
+      if (visual.colorBins < game.minColorBins) {
+        throw new Error(`${target.label} ${game.id} rendered too few gameplay color bins: ${JSON.stringify(visual)}`);
+      }
+      const baseline = visualBaselines.get(game.id);
+      if (baseline && histogramDistance(baseline.histogram, visual.histogram) > 0.2) {
+        throw new Error(`${target.label} ${game.id} visual output diverged from the desktop baseline`);
+      }
+      visualBaselines.set(game.id, baseline ?? visual);
+      if (screenshotDirectory) {
+        console.log(`${target.label} ${game.id} visual signature ${JSON.stringify({
+          colorBins: visual.colorBins,
+          desktopDistance: baseline ? histogramDistance(baseline.histogram, visual.histogram) : 0
+        })}`);
+      }
     }
 
     const runtimeState = await page.evaluate((expectedRomUrl) => ({
@@ -362,8 +425,120 @@ async function verifyGame(target, game) {
     await assertSimultaneousMappedInput(page, target, game);
     await assertCancelledMappedInput(page, target, game);
     await assertDiagonalDpadInput(page, target, game);
+    if (game.verifyRomCacheReuse) {
+      await assertRomCacheReuse(page, target, game, expectedRomUrl, romNetworkRequests);
+    }
   } finally {
     await context.close();
+  }
+}
+
+async function advanceMetalSlugTutorial(page, target, game) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const screenshot = await page.locator(".game-stage").screenshot();
+    if (!hasMetalSlugTutorial(screenshot)) {
+      await triggerSpecialControl(page, target, "coin", "5");
+      await page.waitForTimeout(250);
+      await triggerSpecialControl(page, target, "start", "Enter");
+      await page.waitForTimeout(5_000);
+      return;
+    }
+    await triggerSpecialControl(page, target, "coin", "5");
+    await page.waitForTimeout(250);
+    await triggerSpecialControl(page, target, "start", "Enter");
+    await page.waitForTimeout(1_500);
+  }
+  await page.waitForTimeout(15_000);
+}
+
+async function triggerSpecialControl(page, target, action, key) {
+  if (target.inputMode === "keyboard") {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(500);
+    await page.keyboard.up(key);
+    return;
+  }
+
+  const box = await page.locator(
+    `[data-touch-surface="virtual"] .virtual-special-button[data-action="${action}"]`
+  ).boundingBox();
+  if (!box) {
+    throw new Error(`${target.label} special control ${action} was not found`);
+  }
+  const point = centerPoint(box);
+  await dispatchTouchStart(page, point.x, point.y, action === "coin" ? 1951 : 1952);
+  await page.waitForTimeout(500);
+  await dispatchTouchEnd(page, point.x, point.y, action === "coin" ? 1951 : 1952);
+}
+
+async function assertRomCacheReuse(page, target, game, expectedRomUrl, romNetworkRequests) {
+  const cacheKey = `${game.romFile}:${game.romVersion}`;
+  await page.waitForFunction(({ byteLength, cacheKey }) => new Promise((resolve) => {
+    const openRequest = indexedDB.open("arcade-safari-roms", 1);
+    openRequest.onerror = () => resolve(false);
+    openRequest.onsuccess = () => {
+      const database = openRequest.result;
+      const transaction = database.transaction("roms", "readonly");
+      const readRequest = transaction.objectStore("roms").get(cacheKey);
+      readRequest.onerror = () => {
+        database.close();
+        resolve(false);
+      };
+      readRequest.onsuccess = () => {
+        const record = readRequest.result;
+        database.close();
+        resolve(record?.byteLength === byteLength && record?.bytes?.byteLength === byteLength);
+      };
+    };
+  }), { byteLength: game.romByteLength, cacheKey }, { timeout: 10_000 });
+
+  const serviceWorkerRomEntries = await page.evaluate(async (romPathname) => {
+    const matches = [];
+    for (const cacheName of await caches.keys()) {
+      const cache = await caches.open(cacheName);
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname === romPathname) {
+          matches.push({ cacheName, url: request.url });
+        }
+      }
+    }
+    return matches;
+  }, new URL(expectedRomUrl).pathname);
+  if (serviceWorkerRomEntries.length > 0) {
+    throw new Error(`${target.label} ${game.id} duplicated the ROM in Cache Storage: ${JSON.stringify(serviceWorkerRomEntries)}`);
+  }
+  if (romNetworkRequests.length !== 1) {
+    throw new Error(`${target.label} ${game.id} expected one cold ROM request before cache reuse, got ${romNetworkRequests.length}`);
+  }
+
+  await page.locator(".game-topbar [data-back]").click();
+  await page.locator(`[data-game-id="${game.id}"]`).waitFor({ timeout: 10_000 });
+  await page.locator(`[data-game-id="${game.id}"]`).click();
+  const choice = page.locator("[data-autosave-choice]");
+  const nextView = await Promise.race([
+    choice.waitFor({ timeout: 10_000 }).then(() => "choice"),
+    page.locator("canvas").first().waitFor({ timeout: 10_000 }).then(() => "game")
+  ]);
+  if (nextView === "choice") {
+    await page.locator("[data-start-new]").click();
+  }
+  await page.locator("canvas").first().waitFor({ timeout: 90_000 });
+  await page.waitForFunction(() => (
+    (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= 120
+  ), undefined, { timeout: 60_000 });
+  await page.locator("[data-game-status]").getByText("플레이 중").waitFor({ timeout: 10_000 });
+
+  const warmFetchCalls = await page.evaluate((romUrl) => (
+    window.__gameSmokeFetchCalls ?? []
+  ).filter((call) => call.url === romUrl), expectedRomUrl);
+  if (warmFetchCalls.length !== 0 || romNetworkRequests.length !== 1) {
+    throw new Error(`${target.label} ${game.id} warm launch fetched the ROM again: ${JSON.stringify({
+      coldAndWarmRequests: romNetworkRequests,
+      warmFetchCalls
+    })}`);
+  }
+  if (screenshotDirectory) {
+    console.log(`${target.label} ${game.id} ROM cache reuse cold=1 warm=0 CacheStorage=0`);
   }
 }
 
@@ -864,7 +1039,10 @@ async function triggerControl(page, target, check) {
     throw new Error(`Control was not found for selector ${check.selector}`);
   }
 
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  const point = centerPoint(box);
+  await dispatchTouchStart(page, point.x, point.y, 1960);
+  await page.waitForTimeout(120);
+  await dispatchTouchEnd(page, point.x, point.y, 1960);
   await page.waitForTimeout(120);
 }
 
@@ -1033,6 +1211,29 @@ function hasRetroArchMainMenu(pngBuffer) {
   return leftMenuPanelRatio > 0.75 && bodyPanelRatio > 0.75;
 }
 
+function hasMetalSlugTutorial(pngBuffer) {
+  const image = decodePngRgba(pngBuffer);
+  const yStart = Math.floor(image.height * 0.6);
+  let green = 0;
+  let red = 0;
+  let total = 0;
+
+  for (let y = yStart; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const pixel = readPixel(image, x, y);
+      total += 1;
+      if (pixel.red > 140 && pixel.red > pixel.green * 1.4 && pixel.red > pixel.blue * 1.2) {
+        red += 1;
+      }
+      if (pixel.green > 100 && pixel.green > pixel.red * 1.2 && pixel.green > pixel.blue * 1.1) {
+        green += 1;
+      }
+    }
+  }
+
+  return total > 0 && red / total > 0.006 && green / total > 0.0015;
+}
+
 function visiblePixelRatio(pngBuffer, region) {
   const image = decodePngRgba(pngBuffer);
   const xStart = Math.floor(image.width * region.xStart);
@@ -1052,6 +1253,39 @@ function visiblePixelRatio(pngBuffer, region) {
   }
 
   return total > 0 ? visible / total : 0;
+}
+
+function gameplayVisualSignature(pngBuffer, region) {
+  const image = decodePngRgba(pngBuffer);
+  const targetRegion = region ?? { xEnd: 1, xStart: 0, yEnd: 1, yStart: 0 };
+  const xStart = Math.floor(image.width * targetRegion.xStart);
+  const xEnd = Math.floor(image.width * targetRegion.xEnd);
+  const yStart = Math.floor(image.height * targetRegion.yStart);
+  const yEnd = Math.floor(image.height * targetRegion.yEnd);
+  const colorBins = new Set();
+  const histogram = Array.from({ length: 64 }, () => 0);
+  let total = 0;
+
+  for (let y = yStart; y < yEnd; y += 1) {
+    for (let x = xStart; x < xEnd; x += 1) {
+      const { alpha, blue, green, red } = readPixel(image, x, y);
+      if (alpha <= 240) {
+        continue;
+      }
+      colorBins.add(`${red >> 4}:${green >> 4}:${blue >> 4}`);
+      histogram[((red >> 6) << 4) | ((green >> 6) << 2) | (blue >> 6)] += 1;
+      total += 1;
+    }
+  }
+
+  return {
+    colorBins: colorBins.size,
+    histogram: histogram.map((count) => total > 0 ? count / total : 0)
+  };
+}
+
+function histogramDistance(left, right) {
+  return left.reduce((distance, value, index) => distance + Math.abs(value - right[index]), 0) / 2;
 }
 
 function panelPixelRatio(image, xStartRatio, xEndRatio, yStartRatio, yEndRatio) {

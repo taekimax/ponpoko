@@ -16,8 +16,10 @@ describe("external ROM server paths", () => {
     );
   });
 
-  it("does not serve undeclared parent ROMs at the app root", () => {
-    expect(resolveExternalRomPath("/ponpoko/neogeo.zip", "/tmp/roms")).toBeNull();
+  it("serves the declared Neo Geo parent ROM at the app root", () => {
+    expect(resolveExternalRomPath("/ponpoko/neogeo.zip", "/tmp/roms")).toBe(
+      path.join("/tmp/roms", "neogeo.zip")
+    );
   });
 
   it("rejects non-ROM routes and traversal attempts", () => {

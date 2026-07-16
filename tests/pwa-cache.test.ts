@@ -114,10 +114,10 @@ describe("PWA asset cache", () => {
     expect(existsSync("public/service-worker.js")).toBe(true);
   });
 
-  it("caches large runtime assets and ROMs without caching navigations forever", () => {
+  it("caches emulator assets without duplicating large ROMs in Cache Storage", () => {
     const serviceWorker = readFileSync("public/service-worker.js", "utf8");
 
-    expect(serviceWorker).toContain("/ponpoko/roms/");
+    expect(serviceWorker).not.toContain('"/ponpoko/roms/"');
     expect(serviceWorker).toContain("/ponpoko/emulatorjs/");
     expect(serviceWorker).toContain("cacheFirst");
     expect(serviceWorker).toContain("networkFirst");
@@ -139,7 +139,7 @@ describe("PWA asset cache", () => {
     const result = serviceWorker.dispatchFetch({
       method: "GET",
       mode: "same-origin",
-      url: "https://example.test/ponpoko/roms/game.zip"
+      url: "https://example.test/ponpoko/emulatorjs/cores/fbneo-legacy-wasm.data"
     });
 
     expect(result.responsePromise).toBeDefined();
@@ -157,6 +157,29 @@ describe("PWA asset cache", () => {
 
     cacheWrite.resolve();
     await expect(result.waitUntilPromises[0]).resolves.toBeUndefined();
+  });
+
+  it("leaves ROM requests to the app-owned IndexedDB cache", () => {
+    const cache = {
+      match: vi.fn(),
+      put: vi.fn()
+    };
+    const caches = {
+      open: vi.fn(() => Promise.resolve(cache))
+    };
+    const fetch = vi.fn(() => Promise.resolve(new Response("rom", { status: 200 })));
+    const serviceWorker = loadServiceWorker({ caches, fetch });
+
+    const result = serviceWorker.dispatchFetch({
+      method: "GET",
+      mode: "same-origin",
+      url: "https://example.test/ponpoko/roms/mslug.zip?v=verified"
+    });
+
+    expect(result.responsePromise).toBeUndefined();
+    expect(result.waitUntilPromises).toEqual([]);
+    expect(caches.open).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("returns network-first navigation responses without waiting for cache writes", async () => {

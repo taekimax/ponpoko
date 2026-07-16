@@ -1,4 +1,4 @@
-const CACHE_VERSION = "2026-07-16-menu-isolation-v3";
+const CACHE_VERSION = "2026-07-16-metal-slug-v1";
 const STATIC_CACHE = `ponpoko-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `ponpoko-runtime-${CACHE_VERSION}`;
 const APP_SHELL = [
@@ -9,7 +9,6 @@ const APP_SHELL = [
 const CACHE_FIRST_PREFIXES = [
   "/ponpoko/assets/",
   "/ponpoko/emulatorjs/",
-  "/ponpoko/roms/",
   "/ponpoko/states/",
   "/ponpoko/thumbs/"
 ];

@@ -4,13 +4,14 @@ import { CATALOG, ROM_BASE_PATH, getRomPath, resolveRomPath } from "../src/catal
 describe("static game catalog", () => {
   it("supports the local-ROM games with fixed ROM paths", () => {
     expect(ROM_BASE_PATH).toBe("/ponpoko/roms/");
-    expect(CATALOG).toHaveLength(8);
+    expect(CATALOG).toHaveLength(9);
     expect(CATALOG.map((game) => game.romFile)).toEqual([
       "ponpoko.zip",
       "pbobble.zip",
       "spang.zip",
       "bublbobl.zip",
       "mslug.zip",
+      "s1945.zip",
       "snes_smwk.zip",
       "sf2ce.zip",
       "wofj.zip"
@@ -26,16 +27,17 @@ describe("static game catalog", () => {
       "spang",
       "bublbobl",
       "mslug",
+      "s1945",
       "snes_smwk",
       "sf2ce",
       "wofj_korean_v1_20"
     ]);
   });
 
-  it("exposes Metal Slug without restoring Strikers 1945", () => {
+  it("exposes Metal Slug and Strikers 1945", () => {
     expect(CATALOG.map((game) => game.id)).toContain("mslug");
-    expect(CATALOG.map((game) => game.id)).not.toContain("s1945");
-    expect(CATALOG.map((game) => game.romFile)).not.toContain("s1945.zip");
+    expect(CATALOG.map((game) => game.id)).toContain("s1945");
+    expect(CATALOG.map((game) => game.romFile)).toContain("s1945.zip");
   });
 
   it("loads Super Mario World through the SNES9x core instead of the NSS MAME set", () => {
@@ -99,6 +101,26 @@ describe("static game catalog", () => {
     expect(metalSlug?.romVersion).toBe("3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8");
     expect(getRomPath(metalSlug!)).toBe(
       "/ponpoko/roms/mslug.zip?v=3ebe7ca4166f956a65ae98d86f9172f8b5d4462efa13723a5ea72fcf59adcbf8"
+    );
+  });
+
+  it("loads Strikers 1945 through FBNeo as a vertical two-button shooter", () => {
+    const strikers1945 = CATALOG.find((game) => game.id === "s1945");
+
+    expect(strikers1945).toMatchObject({
+      controllerProfile: "arcadeTwoButton",
+      core: "fbneo",
+      romFile: "s1945.zip",
+      screenOrientation: "vertical",
+      runtimeDebug: expect.objectContaining({
+        coreDataFragment: "/emulatorjs/cores/fbneo-legacy-wasm.data"
+      }),
+      titleEn: "Strikers 1945"
+    });
+    expect(strikers1945?.emulator.parentRomFile).toBeUndefined();
+    expect(strikers1945?.romVersion).toBe("b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d");
+    expect(getRomPath(strikers1945!)).toBe(
+      "/ponpoko/roms/s1945.zip?v=b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d"
     );
   });
 

@@ -4,6 +4,7 @@ export const CATALOG_ROMS = [
   "spang.zip",
   "bublbobl.zip",
   "mslug.zip",
+  "s1945.zip",
   "snes_smwk.zip",
   "sf2ce.zip",
   "wofj.zip"

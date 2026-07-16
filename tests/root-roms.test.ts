@@ -12,6 +12,18 @@ const metalSlugFbNeoSpriteRoms = {
   "201-c3.c3": "5121456a",
   "201-c4.c4": "f4ad59a3"
 };
+const strikers1945FbNeoRoms = {
+  "2s.u40": { crc: "9b10062a", size: 262_144 },
+  "3-u63.bin": { crc: "42d40ae1", size: 131_072 },
+  "3s.u41": { crc: "f87e871a", size: 262_144 },
+  "u1.bin": { crc: "dee22654", size: 262_144 },
+  "u20.bin": { crc: "28a27fee", size: 2_097_152 },
+  "u21.bin": { crc: "c5d60ea9", size: 2_097_152 },
+  "u22.bin": { crc: "ca152a32", size: 2_097_152 },
+  "u23.bin": { crc: "48710332", size: 2_097_152 },
+  "u34.bin": { crc: "aaf83e23", size: 2_097_152 },
+  "u61.bin": { crc: "a839cf47", size: 2_097_152 }
+};
 const neoGeoFbNeoBiosRoms = {
   "000-lo.lo": "5a86cff2",
   "sfix.sfix": "c2ea0cfd",
@@ -43,10 +55,10 @@ describe("root ROM files", () => {
     expect(prepareScriptSource).toContain("CATALOG_PARENT_ROMS");
   });
 
-  it("keeps Strikers 1945 excluded from the catalog ROM build manifest", () => {
+  it("declares Strikers 1945 in the catalog ROM build manifest", () => {
     const manifestSource = readFileSync(path.join(process.cwd(), "scripts/catalog-roms.mjs"), "utf8");
 
-    expect(manifestSource).not.toContain('"s1945.zip"');
+    expect(manifestSource).toContain('"s1945.zip"');
   });
 
   it("requires the verified Neo Geo parent BIOS archive for FBNeo Metal Slug", () => {
@@ -100,6 +112,21 @@ describe("root ROM files", () => {
 
     for (const incompatibleName of ["201-c1.bin", "201-c2.bin", "201-c3.bin", "201-c4.bin"]) {
       expect(archive.has(incompatibleName), `${incompatibleName} must not be used with the FBNeo core`).toBe(false);
+    }
+  });
+
+  it("keeps the complete Strikers 1945 archive in the verified FBNeo layout", () => {
+    const sourcePath = path.join(process.cwd(), "roms", "s1945.zip");
+    const archive = readZipEntries(readFileSync(sourcePath));
+
+    expect([...archive.keys()].sort()).toEqual(Object.keys(strikers1945FbNeoRoms).sort());
+    for (const [fileName, expected] of Object.entries(strikers1945FbNeoRoms)) {
+      const entry = archive.get(fileName);
+
+      expect(entry, `${fileName} should be present in s1945.zip`).toBeDefined();
+      expect(entry?.uncompressedSize, `${fileName} uncompressed size`).toBe(expected.size);
+      expect(entry?.metadataCrc32, `${fileName} central directory CRC`).toBe(expected.crc);
+      expect(crc32Hex(extractZipEntry(entry!)), `${fileName} content CRC`).toBe(expected.crc);
     }
   });
 

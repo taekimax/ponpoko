@@ -47,6 +47,7 @@ describe("controller profiles", () => {
       ["spang", [false, true, true, true, true, true]],
       ["bublbobl", [false, false, true, true, true, true]],
       ["mslug", [false, false, false, true, true, true]],
+      ["s1945", [false, false, true, true, true, true]],
       ["snes_smwk", [false, false, false, false, false, false]],
       ["sf2ce", [false, false, false, false, false, false]],
       ["wofj_korean_v1_20", [false, false, true, true, true, true]]
@@ -67,6 +68,7 @@ describe("controller profiles", () => {
       ["spang", "fourWay"],
       ["bublbobl", "fourWay"],
       ["mslug", "eightWay"],
+      ["s1945", "eightWay"],
       ["snes_smwk", "eightWay"],
       ["sf2ce", "eightWay"],
       ["wofj_korean_v1_20", "eightWay"]
@@ -115,6 +117,14 @@ describe("controller profiles", () => {
         expectedButton("A", "button1", false, 0),
         expectedButton("B", "button2", false, 8),
         expectedButton("C", "button3", false, 1),
+        expectedButton("·", "button4", true, 9),
+        expectedButton("·", "button5", true, 10),
+        expectedButton("·", "button6", true, 11)
+      ]],
+      ["s1945", [
+        expectedButton("샷", "button1", false, 0),
+        expectedButton("폭탄", "button2", false, 8),
+        expectedButton("·", "button3", true, 1),
         expectedButton("·", "button4", true, 9),
         expectedButton("·", "button5", true, 10),
         expectedButton("·", "button6", true, 11)

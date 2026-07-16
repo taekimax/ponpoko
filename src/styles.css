@@ -415,11 +415,11 @@ p {
 }
 
 .game-stage.is-vertical #game canvas {
-  width: auto !important;
-  max-width: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
   height: 100% !important;
   max-height: 100% !important;
-  aspect-ratio: 320 / 224;
+  aspect-ratio: 224 / 320;
 }
 
 #game .ejs_virtualGamepad_parent,

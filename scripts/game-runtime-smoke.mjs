@@ -114,6 +114,31 @@ const games = [
     videoWidth: 256
   },
   {
+    advanceSelection: true,
+    compareVisualAcrossTargets: false,
+    core: "fbneo",
+    dpadMode: "eightWay",
+    id: "s1945",
+    inactiveButtons: 4,
+    inputChecks: [
+      { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
+      { expectedInput: 0, keyboard: "KeyQ", label: "shot", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 8, keyboard: "KeyW", label: "bomb", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+    ],
+    minColorBins: 48,
+    minFrame: 600,
+    minVisiblePixelRatio: 0.04,
+    romByteLength: 5_455_829,
+    romFile: "s1945.zip",
+    romVersion: "b59a040b61763b5a1dc83b5e8db368cf778ddfdfd7ce593f0b1b00eb25c69f1d",
+    screenOrientation: "vertical",
+    title: "스트라이커즈 1945",
+    verifyRomCacheReuse: true,
+    videoHeight: 224,
+    videoWidth: 320,
+    visibleRegion: { xEnd: 0.88, xStart: 0.12, yEnd: 0.86, yStart: 0.08 }
+  },
+  {
     dpadMode: "eightWay",
     id: "sf2ce",
     inactiveButtons: 0,
@@ -348,12 +373,74 @@ async function verifyGame(target, game) {
     if (game.advanceTutorial) {
       await advanceMetalSlugTutorial(page, target, game);
     }
+    if (game.advanceSelection) {
+      const selectionCheck = game.inputChecks.find((check) => check.expectedInput === 0);
+      if (!selectionCheck) {
+        throw new Error(`${target.label} ${game.id} is missing its selection input`);
+      }
+      await triggerControl(page, target, selectionCheck);
+      await page.waitForTimeout(5_000);
+    }
     const screenshotPath = screenshotDirectory
       ? `${screenshotDirectory}/${target.label.replaceAll(" ", "-")}-${game.id}.png`
       : undefined;
     const activeStageScreenshot = await page.locator(".game-stage").screenshot(
       screenshotPath ? { path: screenshotPath } : undefined
     );
+    if (game.screenOrientation === "vertical") {
+      const geometry = await page.evaluate(() => {
+        const stage = document.querySelector(".game-stage");
+        const canvas = document.querySelector(".game-stage canvas");
+        const canvasParent = canvas?.parentElement;
+        const toRect = (element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            bottom: rect.bottom,
+            height: rect.height,
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            width: rect.width
+          };
+        };
+        const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+
+        return {
+          canvasAttributes: canvas ? { height: canvas.height, width: canvas.width } : null,
+          canvasParentRect: canvasParent ? toRect(canvasParent) : null,
+          canvasRect: canvas ? toRect(canvas) : null,
+          canvasStyle: canvasStyle ? {
+            aspectRatio: canvasStyle.aspectRatio,
+            height: canvasStyle.height,
+            objectFit: canvasStyle.objectFit,
+            transform: canvasStyle.transform,
+            transformOrigin: canvasStyle.transformOrigin,
+            width: canvasStyle.width
+          } : null,
+          stageRect: stage ? toRect(stage) : null
+        };
+      });
+      if (
+        !geometry.stageRect ||
+        !geometry.canvasRect ||
+        geometry.stageRect.width >= geometry.stageRect.height ||
+        Math.abs(geometry.stageRect.width / geometry.stageRect.height - 224 / 320) > 0.02 ||
+        Math.abs(geometry.canvasRect.width - (geometry.stageRect.width - 2)) > 3 ||
+        Math.abs(geometry.canvasRect.height - (geometry.stageRect.height - 2)) > 3
+      ) {
+        throw new Error(`${target.label} ${game.id} vertical canvas is cropped or distorted: ${JSON.stringify(geometry)}`);
+      }
+      const edgeVisibility = {
+        left: visiblePixelRatio(activeStageScreenshot, { xEnd: 0.18, xStart: 0.02, yEnd: 0.92, yStart: 0.08 }),
+        right: visiblePixelRatio(activeStageScreenshot, { xEnd: 0.98, xStart: 0.82, yEnd: 0.92, yStart: 0.08 })
+      };
+      if (Math.min(edgeVisibility.left, edgeVisibility.right) < 0.08) {
+        throw new Error(`${target.label} ${game.id} vertical gameplay is clipped at an edge: ${JSON.stringify(edgeVisibility)}`);
+      }
+      if (screenshotDirectory) {
+        console.log(`${target.label} ${game.id} vertical geometry ${JSON.stringify({ edgeVisibility, geometry })}`);
+      }
+    }
     if (hasRetroArchMainMenu(activeStageScreenshot)) {
       throw new Error(`${target.label} ${game.id} still shows the RetroArch main menu instead of gameplay`);
     }
@@ -368,11 +455,15 @@ async function verifyGame(target, game) {
       if (visual.colorBins < game.minColorBins) {
         throw new Error(`${target.label} ${game.id} rendered too few gameplay color bins: ${JSON.stringify(visual)}`);
       }
-      const baseline = visualBaselines.get(game.id);
+      const baseline = game.compareVisualAcrossTargets === false
+        ? null
+        : visualBaselines.get(game.id);
       if (baseline && histogramDistance(baseline.histogram, visual.histogram) > 0.2) {
         throw new Error(`${target.label} ${game.id} visual output diverged from the desktop baseline`);
       }
-      visualBaselines.set(game.id, baseline ?? visual);
+      if (game.compareVisualAcrossTargets !== false) {
+        visualBaselines.set(game.id, baseline ?? visual);
+      }
       if (screenshotDirectory) {
         console.log(`${target.label} ${game.id} visual signature ${JSON.stringify({
           colorBins: visual.colorBins,
@@ -406,6 +497,21 @@ async function verifyGame(target, game) {
 
     assertRuntimeState(target, game, runtimeState, expectedParentRomUrl);
     await assertMobileControllerLayout(page, target, game);
+    if (screenshotPath) {
+      await page.locator(".boot-debug-panel").evaluateAll((panels) => {
+        for (const panel of panels) {
+          panel.dataset.smokeVisibility = panel.style.visibility;
+          panel.style.visibility = "hidden";
+        }
+      });
+      await page.screenshot({ path: screenshotPath.replace(/\.png$/, "-viewport.png") });
+      await page.locator(".boot-debug-panel").evaluateAll((panels) => {
+        for (const panel of panels) {
+          panel.style.visibility = panel.dataset.smokeVisibility ?? "";
+          delete panel.dataset.smokeVisibility;
+        }
+      });
+    }
     await assertInactiveButtonsIgnoreInput(page, target, game);
 
     await page.evaluate(() => {
@@ -811,6 +917,16 @@ async function assertMobileControllerLayout(page, target, game) {
   if (game.screenOrientation === "vertical") {
     if (layout.controlTop === null || layout.stageRect === null || layout.controlTop - layout.stageRect.bottom > layout.viewportHeight * 0.04) {
       throw new Error(`${target.label} ${game.id} vertical controls do not use the available bottom space: ${JSON.stringify(layout)}`);
+    }
+    if (screenshotDirectory) {
+      console.log(`${target.label} ${game.id} vertical mobile layout ${JSON.stringify({
+        controlsRect: layout.controlsRect,
+        menuRect: layout.menuRect,
+        specialMinHeight: layout.specialMinHeight,
+        stageRect: layout.stageRect,
+        viewportHeight: layout.viewportHeight,
+        viewportWidth: layout.viewportWidth
+      })}`);
     }
   } else if (
     layout.controlsCenterY === null ||

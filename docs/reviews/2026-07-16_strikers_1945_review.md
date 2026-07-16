@@ -20,7 +20,7 @@ Add the existing `roms/s1945.zip` to the active catalog and make Strikers 1945 r
 | P2 | Correct shooter controls | I2 reuse the two-button 8-way profile with verified input IDs | Controller unit checks plus keyboard/touch and simultaneous-input smoke | done |
 | P3 | Correct vertical presentation | I3 retain or minimally correct the vertical stage/control layout | Desktop/mobile geometry, hit-test, canvas, and screenshot checks | done |
 | P4 | Runtime playability | I4 add Strikers-specific FBNeo runtime evidence | Advancing-frame, video, visible-gameplay, and input checks on both targets | done |
-| P5 | Release closure | I5 final regression, evaluator, main push, Pages deployment, live readback, cleanup | Workflow result, live URL smoke, clean/synced repository | in_progress |
+| P5 | Release closure | I5 final regression, evaluator, main push, Pages deployment, live readback, cleanup | Workflow result, live URL smoke, clean/synced repository | done |
 
 ## Work Ledger
 
@@ -28,7 +28,7 @@ Add the existing `roms/s1945.zip` to the active catalog and make Strikers 1945 r
 | --- | --- | --- | --- | --- |
 | W1 | s1945_planner | done | Read-only plan and historical repository evidence | P1-P5 scope and risks delivered |
 | W2 | s1945_oss_rom | done | Read-only upstream FBNeo/ROM/input forensics | Exact archive, orientation, and input evidence delivered |
-| W3 | codex | in_progress | Contract tests, implementation, runtime/UI verification, integration | I1-I5 green without scope drift |
+| W3 | codex | done | Contract tests, implementation, runtime/UI verification, integration | I1-I5 green without scope drift |
 | W4 | s1945_planner evaluator | done | Independent contract/diff/runtime evidence review | GO with no unresolved Critical, High, Medium, or Low findings |
 
 ## Baseline and Test Inventory
@@ -46,7 +46,7 @@ Add the existing `roms/s1945.zip` to the active catalog and make Strikers 1945 r
 | I2 | P2 | codex | done | Reuse shared input routing; change mappings only if primary-source/runtime evidence requires it | Mapping matrix and desktop/mobile input smoke passed |
 | I3 | P3 | codex | done | Touch only vertical layout rules needed by observed failures | Portrait geometry, edge visibility, layout, and screenshot review passed |
 | I4 | P4 | codex | done | Add game-specific smoke evidence without weakening existing games | Desktop Chromium and mobile WebKit active-play checks passed |
-| I5 | P5 | codex | in_progress | Release only after final green gates and evaluator GO | Commit, main push, Pages workflow, live smoke, cleanup |
+| I5 | P5 | codex | done | Release only after final green gates and evaluator GO | Commit `77c2561`, main push, Pages workflow `29477123107`, live smoke, cleanup |
 
 ## Audit Findings
 
@@ -89,11 +89,11 @@ Add the existing `roms/s1945.zip` to the active catalog and make Strikers 1945 r
 | ROM cache reuse | pass on both targets: cold network request `1`, warm `0`, CacheStorage ROM entries `0` |
 | Catalog-wide browser regression | pass: app smoke, all 9 games on desktop Chromium/mobile WebKit, and prep-failure recovery |
 | Independent evaluator | GO: isolated combined-target rerun passed with desktop 87/mobile 76 color bins, edge visibility 86.6%-93.3%, cache reuse, focused 37/37, full 113/113, typecheck, build/package; no unresolved findings |
-| Pages/live/cleanup | pending |
+| Pages/live/cleanup | pass: commit `77c2561`; workflow `29477123107` build/deploy success; live desktop 69/mobile 66 color bins, edge visibility 98.3%-99.2%, cold 1/warm 0/CacheStorage 0; dedicated worktree, merged branch, and temporary artifacts removed |
 
 ## Deletion Impact Note
 
-No tracked test, documentation, or configuration file is planned for deletion. Generated build output, browser profiles/screenshots, temporary test inventories, and the dedicated worktree may be removed after release verification; rollback before release is deletion of this session branch/worktree without touching `main`.
+No tracked test, documentation, or configuration file was deleted. Generated build output, browser profiles/screenshots, temporary test inventories/logs, the dedicated worktree, and its merged local branch were removed after live release verification. The final repository retains only the clean `main` worktree.
 
 ## Progress Log
 
@@ -106,3 +106,9 @@ No tracked test, documentation, or configuration file is planned for deletion. G
 `CP3 | I4 | evaluator + codex | in_progress | evaluator reproduced a nondeterministic cross-target histogram failure on two valid randomized stages | scope the visual oracle to deterministic per-target evidence and rerun`
 
 `CP4 | I4 | evaluator + codex | done | clean combined reruns passed with independently different valid maps; all per-target visual, geometry, input, and cache gates green; evaluator GO | complete final catalog-wide rerun, then release I5`
+
+`CP5 | I5 | codex | done | commit 77c2561, Pages workflow 29477123107, live desktop/mobile S1945 play and cache reuse green, dedicated worktree/branch and generated residue removed | close review`
+
+## Closure
+
+Strikers 1945 is active as the ninth catalog game through the verified FBNeo World parent set. The app presents the rotated core output in a true portrait stage without the historical half-screen crop, keeps the top menu outside the gamepad, and fits the D-pad, Shot/Bomb, and service buttons below gameplay on a 375x667 viewport. Desktop Chromium and iPhone-sized mobile WebKit reached actual play with coherent sprites, correct `0/8` actions, simultaneous input, and single-copy IndexedDB ROM reuse. GitHub Pages deployed successfully and the live URL passed the same targeted runtime checks. Physical-iPhone hardware behavior remains an external validation risk and is not claimed by the WebKit simulation.

@@ -1,4 +1,5 @@
 import type { ControllerProfileId, GameEntry } from "./catalog";
+import type { EmulatorInput } from "./native-emulator";
 
 export type ControlAction =
   | "left"
@@ -37,6 +38,7 @@ export interface ControlZone {
 
 export interface ControlButton {
   id: string;
+  input: EmulatorInput;
   inactive?: boolean;
   label: string;
   action: ControlAction;
@@ -100,11 +102,17 @@ const UNIVERSAL_DPAD_ZONES: ControlZone[] = [
 
 const BUTTON_TONES: ControlButton["tone"][] = ["primary", "secondary", "danger", "primary", "secondary", "danger"];
 const BUTTON_ACTIONS: ControlAction[] = ["button1", "button2", "button3", "button4", "button5", "button6"];
+const CLASSIC_ARCADE_BUTTON_INPUTS: EmulatorInput[] = ["action1", "action3", "action2", "action4", "action5", "action6"];
+const STANDARD_RETROPAD_BUTTON_INPUTS: EmulatorInput[] = ["action1", "action2", "action3", "action4", "action5", "action6"];
 
-function createUniversalButtons(buttons: Array<Partial<ControlButton> & Pick<ControlButton, "label">>): ControlButton[] {
+function createUniversalButtons(
+  buttons: Array<Partial<ControlButton> & Pick<ControlButton, "label">>,
+  inputs: EmulatorInput[]
+): ControlButton[] {
   return BUTTON_ACTIONS.map((defaultAction, index) => ({
     action: buttons[index]?.action ?? defaultAction,
     id: `button-${index + 1}`,
+    input: inputs[index],
     inactive: buttons[index]?.inactive ?? false,
     label: buttons[index]?.label ?? "·",
     tone: buttons[index]?.tone ?? BUTTON_TONES[index]
@@ -126,7 +134,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   platformFire: {
     dpadMode: "fourWay",
@@ -142,7 +150,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   bubbleBobble: {
     dpadMode: "fourWay",
@@ -158,23 +166,23 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   puzzleShoot: {
     dpadMode: "fourWay",
     id: "puzzleShoot",
     label: "D패드 + 6버튼",
-    hint: "왼쪽 D패드 이동 · 오른쪽 발사/와이어",
+    hint: "왼쪽 D패드 이동 · 오른쪽 발사",
     zonePlacement: "virtualStick",
     zones: UNIVERSAL_DPAD_ZONES,
     buttons: createUniversalButtons([
       { action: "fire", label: "발사", tone: "primary" },
-      { action: "wire", label: "와이어", tone: "secondary" },
+      { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   arcadeTwoButton: {
     dpadMode: "eightWay",
@@ -190,7 +198,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   arcadeThreeButton: {
     dpadMode: "eightWay",
@@ -206,7 +214,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { inactive: true, label: "·" },
       { inactive: true, label: "·" },
       { inactive: true, label: "·" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   arcadeSixButton: {
     dpadMode: "eightWay",
@@ -222,7 +230,23 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { label: "LK" },
       { label: "MK" },
       { label: "HK" }
-    ])
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
+  },
+  beatEmUp: {
+    dpadMode: "eightWay",
+    id: "beatEmUp",
+    label: "D패드 + 6버튼",
+    hint: "왼쪽 D패드 이동 · 오른쪽 공격/점프",
+    zonePlacement: "virtualStick",
+    zones: UNIVERSAL_DPAD_ZONES,
+    buttons: createUniversalButtons([
+      { label: "공격" },
+      { label: "점프" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" },
+      { inactive: true, label: "·" }
+    ], CLASSIC_ARCADE_BUTTON_INPUTS)
   },
   sfcSixButton: {
     dpadMode: "eightWay",
@@ -238,7 +262,7 @@ export const CONTROL_PROFILES: Record<ControllerProfileId, ControllerProfile> = 
       { label: "X" },
       { label: "L" },
       { label: "R" }
-    ])
+    ], STANDARD_RETROPAD_BUTTON_INPUTS)
   }
 };
 

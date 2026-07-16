@@ -8,6 +8,7 @@ export type ControllerProfileId =
   | "arcadeTwoButton"
   | "arcadeThreeButton"
   | "arcadeSixButton"
+  | "beatEmUp"
   | "sfcSixButton";
 
 export type GameId =

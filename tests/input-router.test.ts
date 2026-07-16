@@ -132,10 +132,10 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "up", type: "press" },
-      { input: "up", type: "release" },
-      { input: "up", type: "press" },
-      { input: "up", type: "release" }
+      { input: "action3", type: "press" },
+      { input: "action3", type: "release" },
+      { input: "action3", type: "press" },
+      { input: "action3", type: "release" }
     ]);
   });
 
@@ -156,8 +156,38 @@ describe("InputRouter", () => {
     expect(nativeKeydown).not.toHaveBeenCalled();
     expect(nativeKeyup).not.toHaveBeenCalled();
     expect(emulator.inputCalls).toEqual([
-      { input: "up", type: "press" },
-      { input: "up", type: "release" }
+      { input: "action3", type: "press" },
+      { input: "action3", type: "release" }
+    ]);
+  });
+
+  it("keeps MAME classic and SNES button ordering separate", () => {
+    const emulator = new FakeNativeEmulator();
+    const target = new EventTarget();
+    const router = new InputRouter(emulator);
+    router.attachKeyboard(target);
+
+    router.setControllerProfile(CONTROL_PROFILES.arcadeSixButton);
+    target.dispatchEvent(keyboardEvent("keydown", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyE", "e"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyE", "e"));
+
+    router.setControllerProfile(CONTROL_PROFILES.sfcSixButton);
+    target.dispatchEvent(keyboardEvent("keydown", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
+    target.dispatchEvent(keyboardEvent("keydown", "KeyE", "e"));
+    target.dispatchEvent(keyboardEvent("keyup", "KeyE", "e"));
+
+    expect(emulator.inputCalls).toEqual([
+      { input: "action3", type: "press" },
+      { input: "action3", type: "release" },
+      { input: "action2", type: "press" },
+      { input: "action2", type: "release" },
+      { input: "action2", type: "press" },
+      { input: "action2", type: "release" },
+      { input: "action3", type: "press" },
+      { input: "action3", type: "release" }
     ]);
   });
 

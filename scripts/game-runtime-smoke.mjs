@@ -15,11 +15,10 @@ const games = [
   {
     id: "pbobble",
     dpadMode: "fourWay",
-    inactiveButtons: 4,
+    inactiveButtons: 5,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '[data-touch-surface="virtual"] [data-action="wire"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' }
     ],
     minFrame: 120,
     romFile: "pbobble.zip",
@@ -31,11 +30,10 @@ const games = [
   {
     id: "spang",
     dpadMode: "fourWay",
-    inactiveButtons: 4,
+    inactiveButtons: 5,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "wire", selector: '[data-touch-surface="virtual"] [data-action="wire"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "fire", selector: '[data-touch-surface="virtual"] [data-action="fire"]' }
     ],
     minFrame: 120,
     romFile: "spang.zip",
@@ -51,7 +49,7 @@ const games = [
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "bubble shot", selector: '[data-touch-surface="virtual"] [data-action="fire"]' },
-      { expectedInput: 4, forbiddenInputs: [1, 8], keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] .virtual-game-button[data-action="jumpUp"]' }
+      { expectedInput: 8, forbiddenInputs: [1, 4], keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] .virtual-game-button[data-action="jumpUp"]' }
     ],
     blockedInputChecks: [
       { keyboard: "KeyE", label: "inactive button 3" }
@@ -93,8 +91,8 @@ const games = [
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
       { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' },
-      { expectedInput: 8, keyboard: "KeyE", label: "button3", selector: '[data-touch-surface="virtual"] [data-action="button3"]' },
+      { expectedInput: 8, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' },
+      { expectedInput: 1, keyboard: "KeyE", label: "button3", selector: '[data-touch-surface="virtual"] [data-action="button3"]' },
       { expectedInput: 9, keyboard: "KeyA", label: "button4", selector: '[data-touch-surface="virtual"] [data-action="button4"]' },
       { expectedInput: 10, keyboard: "KeyS", label: "button5", selector: '[data-touch-surface="virtual"] [data-action="button5"]' },
       { expectedInput: 11, keyboard: "KeyD", label: "button6", selector: '[data-touch-surface="virtual"] [data-action="button6"]' }
@@ -109,12 +107,14 @@ const games = [
   {
     dpadMode: "eightWay",
     id: "wofj_korean_v1_20",
-    inactiveButtons: 3,
+    inactiveButtons: 4,
     inputChecks: [
       { expectedInput: 6, keyboard: "ArrowLeft", label: "left", selector: '[data-touch-surface="virtual"] [data-action="left"]' },
-      { expectedInput: 0, keyboard: "KeyQ", label: "button1", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
-      { expectedInput: 1, keyboard: "KeyW", label: "button2", selector: '[data-touch-surface="virtual"] [data-action="button2"]' },
-      { expectedInput: 8, keyboard: "KeyE", label: "button3", selector: '[data-touch-surface="virtual"] [data-action="button3"]' }
+      { expectedInput: 0, keyboard: "KeyQ", label: "attack", selector: '[data-touch-surface="virtual"] [data-action="button1"]' },
+      { expectedInput: 8, keyboard: "KeyW", label: "jump", selector: '[data-touch-surface="virtual"] [data-action="button2"]' }
+    ],
+    blockedInputChecks: [
+      { keyboard: "KeyE", label: "inactive button 3" }
     ],
     minFrame: 120,
     romFile: "wofj.zip",
@@ -360,6 +360,7 @@ async function verifyGame(target, game) {
     }
     await assertBlockedKeyboardInputs(page, target, game);
     await assertSimultaneousMappedInput(page, target, game);
+    await assertCancelledMappedInput(page, target, game);
     await assertDiagonalDpadInput(page, target, game);
   } finally {
     await context.close();
@@ -850,9 +851,60 @@ async function triggerControl(page, target, check) {
 
 async function assertSimultaneousMappedInput(page, target, game) {
   const directionCheck = game.inputChecks.find((check) => check.expectedInput === 6);
-  const actionCheck = game.inputChecks.find((check) => check.expectedInput !== 6);
-  if (!directionCheck || !actionCheck) {
+  const actionChecks = game.inputChecks.filter((check) => check.expectedInput !== 6);
+  if (!directionCheck || actionChecks.length === 0) {
     throw new Error(`${target.label} ${game.id} does not define direction plus action checks`);
+  }
+
+  for (const actionCheck of actionChecks) {
+    await page.evaluate(() => {
+      window.__gameSmokeInputCalls = [];
+    });
+
+    if (target.inputMode === "keyboard") {
+      await page.keyboard.down(directionCheck.keyboard);
+      await page.waitForTimeout(120);
+      await page.keyboard.down(actionCheck.keyboard);
+      await page.waitForTimeout(120);
+      await page.keyboard.up(actionCheck.keyboard);
+      await page.waitForTimeout(80);
+      await page.keyboard.up(directionCheck.keyboard);
+      await page.waitForTimeout(120);
+    } else {
+      const directionBox = await page.locator(directionCheck.selector).first().boundingBox();
+      const actionBox = await page.locator(actionCheck.selector).first().boundingBox();
+      if (!directionBox || !actionBox) {
+        throw new Error(`${target.label} ${game.id} missing simultaneous controls`);
+      }
+
+      const directionPoint = centerPoint(directionBox);
+      const actionPoint = centerPoint(actionBox);
+      await dispatchTouchStart(page, directionPoint.x, directionPoint.y, 1945);
+      await page.waitForTimeout(120);
+      await dispatchTouchStart(page, actionPoint.x, actionPoint.y, 1946);
+      await page.waitForTimeout(120);
+      await dispatchTouchEnd(page, actionPoint.x, actionPoint.y, 1946);
+      await page.waitForTimeout(80);
+      await dispatchTouchEnd(page, directionPoint.x, directionPoint.y, 1945);
+      await page.waitForTimeout(120);
+    }
+
+    const calls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+    assertInputPair(calls, directionCheck.expectedInput, `${target.label} ${game.id} simultaneous ${directionCheck.label}`);
+    assertInputPair(calls, actionCheck.expectedInput, `${target.label} ${game.id} simultaneous ${actionCheck.label}`);
+    assertInputChord(
+      calls,
+      directionCheck.expectedInput,
+      actionCheck.expectedInput,
+      `${target.label} ${game.id} ${directionCheck.label} plus ${actionCheck.label}`
+    );
+  }
+}
+
+async function assertCancelledMappedInput(page, target, game) {
+  const actionCheck = game.inputChecks.find((check) => check.expectedInput !== 6);
+  if (!actionCheck) {
+    throw new Error(`${target.label} ${game.id} does not define an action cancellation check`);
   }
 
   await page.evaluate(() => {
@@ -860,42 +912,24 @@ async function assertSimultaneousMappedInput(page, target, game) {
   });
 
   if (target.inputMode === "keyboard") {
-    await page.keyboard.down(directionCheck.keyboard);
-    await page.waitForTimeout(120);
     await page.keyboard.down(actionCheck.keyboard);
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(80);
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
     await page.keyboard.up(actionCheck.keyboard);
-    await page.waitForTimeout(80);
-    await page.keyboard.up(directionCheck.keyboard);
-    await page.waitForTimeout(120);
   } else {
-    const directionBox = await page.locator(directionCheck.selector).first().boundingBox();
     const actionBox = await page.locator(actionCheck.selector).first().boundingBox();
-    if (!directionBox || !actionBox) {
-      throw new Error(`${target.label} ${game.id} missing simultaneous controls`);
+    if (!actionBox) {
+      throw new Error(`${target.label} ${game.id} missing cancellable action control`);
     }
-
-    const directionPoint = centerPoint(directionBox);
     const actionPoint = centerPoint(actionBox);
-    await dispatchTouchStart(page, directionPoint.x, directionPoint.y, 1945);
-    await page.waitForTimeout(120);
-    await dispatchTouchStart(page, actionPoint.x, actionPoint.y, 1946);
-    await page.waitForTimeout(120);
-    await dispatchTouchEnd(page, actionPoint.x, actionPoint.y, 1946);
+    await dispatchTouchStart(page, actionPoint.x, actionPoint.y, 1947);
     await page.waitForTimeout(80);
-    await dispatchTouchEnd(page, directionPoint.x, directionPoint.y, 1945);
-    await page.waitForTimeout(120);
+    await dispatchTouchCancel(page, actionPoint.x, actionPoint.y, 1947);
   }
 
+  await page.waitForTimeout(120);
   const calls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
-  assertInputPair(calls, directionCheck.expectedInput, `${target.label} ${game.id} simultaneous ${directionCheck.label}`);
-  assertInputPair(calls, actionCheck.expectedInput, `${target.label} ${game.id} simultaneous ${actionCheck.label}`);
-  assertInputChord(
-    calls,
-    directionCheck.expectedInput,
-    actionCheck.expectedInput,
-    `${target.label} ${game.id} ${directionCheck.label} plus ${actionCheck.label}`
-  );
+  assertInputPair(calls, actionCheck.expectedInput, `${target.label} ${game.id} cancelled ${actionCheck.label}`);
 }
 
 async function dispatchTouchStart(page, x, y, pointerId = 1945) {
@@ -918,6 +952,18 @@ async function dispatchTouchEnd(page, x, y, pointerId = 1945) {
     }
 
     window.__gameSmokeDispatchTouch("touchend", x, y, false);
+    window.__gameSmokeActiveTouchTarget = null;
+  }, { pointerId, x, y });
+}
+
+async function dispatchTouchCancel(page, x, y, pointerId = 1945) {
+  await page.evaluate(({ pointerId, x, y }) => {
+    if (typeof PointerEvent === "function") {
+      window.__gameSmokeDispatchPointer("pointercancel", x, y, pointerId, false);
+      return;
+    }
+
+    window.__gameSmokeDispatchTouch("touchcancel", x, y, false);
     window.__gameSmokeActiveTouchTarget = null;
   }, { pointerId, x, y });
 }

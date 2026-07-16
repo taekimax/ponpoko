@@ -14,7 +14,7 @@ export const WARRIORS_OF_FATE_KOREAN_GAME: GameEntry = {
   romVersion: "346984d6e6f2f54d11228ab82350e07b82577be0c3c995fd41e12ba40ae9e906",
   thumbnailFile: "wofj.jpg",
   sourcePageUrl: "https://github.com/taekimax/ponpoko",
-  controllerProfile: "arcadeThreeButton",
+  controllerProfile: "beatEmUp",
   emulator: SHARED_EMULATOR_CONFIG,
   runtimeDebug: createMame2003PlusDebugConfig("wofj.zip"),
   startupAssist: ["coin", "start"]

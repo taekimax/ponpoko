@@ -47,7 +47,6 @@ const CONTROL_INPUTS: Partial<Record<ControlAction, EmulatorInput>> = {
   fastDrop: "down",
   fire: "action1",
   jump: "action1",
-  jumpUp: "up",
   left: "left",
   right: "right",
   rotate: "action1",
@@ -93,7 +92,7 @@ export class InputRouter {
   }
 
   pressControl(action: ControlAction): void {
-    const input = CONTROL_INPUTS[action];
+    const input = this.getControlInput(action);
     if (input) {
       this.press(input);
       return;
@@ -115,7 +114,7 @@ export class InputRouter {
   }
 
   releaseControl(action: ControlAction): void {
-    const input = CONTROL_INPUTS[action];
+    const input = this.getControlInput(action);
     if (input) {
       this.release(input);
     }
@@ -240,13 +239,22 @@ export class InputRouter {
       return { code: event.code, key: event.key };
     }
 
-    const input = CONTROL_INPUTS[button.action];
+    const input = button.input;
     const sequence = CONTROL_SEQUENCES[button.action];
     if (!input && !sequence) {
       return null;
     }
 
     return { code: event.code, input, key: event.key, sequence };
+  }
+
+  private getControlInput(action: ControlAction): EmulatorInput | undefined {
+    const button = this.controllerProfile?.buttons.find((candidate) => candidate.action === action);
+    if (button) {
+      return button.inactive ? undefined : button.input;
+    }
+
+    return CONTROL_INPUTS[action];
   }
 
   private async tapInputSequence(inputs: EmulatorInput[], durationMs = 80, gapMs = 70): Promise<void> {

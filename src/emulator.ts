@@ -166,6 +166,10 @@ const EMULATOR_JS_INPUTS: Record<EmulatorInput, number> = {
   up: 4
 };
 
+export function getEmulatorJsInputId(input: EmulatorInput): number {
+  return EMULATOR_JS_INPUTS[input];
+}
+
 export function getEmulatorWarmupUrls(core: GameEntry["core"]): string[] {
   return [
     EMULATOR_LOADER_URL,
@@ -839,7 +843,7 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   private sendInput(input: EmulatorInput, pressed: EmulatorJsInputState): void {
-    const inputId = EMULATOR_JS_INPUTS[input];
+    const inputId = getEmulatorJsInputId(input);
     recordDebugInput(inputId, pressed);
     this.getRuntime()?.gameManager?.simulateInput?.(0, inputId, pressed);
   }

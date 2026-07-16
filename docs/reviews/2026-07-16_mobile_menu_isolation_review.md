@@ -20,7 +20,7 @@ Keep the in-game menu control away from the mobile gamepad so an active thumb ca
 | I2 | P2 compact mobile layout | codex | done | Change the gamepad service strip from six to five columns | Mobile portrait/landscape geometry smoke passed |
 | I3 | P3 regression coverage | codex | done | Assert one topbar menu, zero gamepad menus, hit visibility, and unchanged navigation | Browser and all-game runtime smoke passed |
 | I4 | P4 installed-client refresh | codex | done | Bump the service-worker cache version | Build artifact contains `2026-07-16-menu-isolation-v3` |
-| I5 | P5 release closure | codex | in_progress | Commit, push `main`, verify Pages and live behavior, then remove generated artifacts | Clean synced worktree and live smoke |
+| I5 | P5 release closure | codex | done | Commit, push `main`, verify Pages and live behavior, then remove generated artifacts | Pages and live smoke passed; generated artifacts removed |
 
 ## Baseline and Red Test
 
@@ -41,6 +41,9 @@ Keep the in-game menu control away from the mobile gamepad so an active thumb ca
 | Catalog runtime | All 7 games passed on desktop Chromium and mobile WebKit with one topbar menu and zero gamepad menus |
 | Desktop layout | `npm run desktop:smoke`: passed; desktop topbar/menu and keyboard layout preserved |
 | Diff integrity | `git diff --check`: passed |
+| Pages release | Implementation commit `bce9af8`; workflow `29470954834`: build/deploy passed |
+| Live site | `https://taekimax.github.io/ponpoko/`: asset `index-ChTk_07c.js`, cache `2026-07-16-menu-isolation-v3`, live WebKit menu smoke passed |
+| Cleanup | Removed local `dist`, TypeScript/Vite caches, `.DS_Store`, and menu-test temporary files; no local server remains |
 
 ## Evaluator Review
 
@@ -60,6 +63,8 @@ No tracked test, documentation, or configuration file will be deleted. The only 
 
 `CP3 | W1-W4 | evaluator | done | <15m | no findings; GO recommendation | release I5`
 
+`CP4 | W5 | codex | done | <20m | commit bce9af8, Pages 29470954834, live WebKit and cleanup complete | close review`
+
 ## Closure
 
-Implementation, local verification, and evaluator review are complete. Pages release, live verification, and cleanup remain.
+The mobile gamepad no longer contains a menu button. Exactly one menu remains in the safe-area-aware topbar, separate from gameplay controls in portrait and landscape. Local and live browser verification passed, Pages was deployed, and generated local artifacts were removed. Physical-iPhone validation remains external.

@@ -392,14 +392,6 @@ function renderVirtualSpecialControls(controlsEnabled: boolean): string {
 }
 
 function renderVirtualSpecialControl(control: (typeof SPECIAL_CONTROLS)[number], controlsEnabled: boolean): string {
-  if (control.type === "menu") {
-    return `
-      <button class="virtual-special-button" type="button" data-back>
-        ${control.label}
-      </button>
-    `;
-  }
-
   const disabled = controlsEnabled ? "" : 'aria-disabled="true" disabled';
 
   if (control.type === "saveState") {

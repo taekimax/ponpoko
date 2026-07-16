@@ -1,4 +1,4 @@
-const CACHE_VERSION = "2026-07-16-catalog-inputs-v2";
+const CACHE_VERSION = "2026-07-16-menu-isolation-v3";
 const STATIC_CACHE = `ponpoko-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `ponpoko-runtime-${CACHE_VERSION}`;
 const APP_SHELL = [

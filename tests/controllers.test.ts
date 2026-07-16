@@ -222,9 +222,8 @@ describe("controller profiles", () => {
     expect(resolveDpadActions("fourWay", 0, 1)).toEqual(["down"]);
   });
 
-  it("keeps one always-visible mobile special key strip available for every game", () => {
+  it("keeps navigation out of the mobile gamepad service strip", () => {
     expect(SPECIAL_CONTROLS).toEqual([
-      { id: "menu", label: "메뉴", type: "menu" },
       { action: "coin", id: "coin", label: "동전", type: "control" },
       { action: "start", id: "start", label: "시작", type: "control" },
       { action: "ok", id: "ok", label: "OK", type: "control" },

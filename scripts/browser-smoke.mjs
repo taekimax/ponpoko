@@ -157,6 +157,8 @@ try {
     const primaryControls = document.querySelector('[data-touch-surface="virtual"] .virtual-primary-controls');
     const primaryButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button')];
     const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
+    const menuButtons = [...document.querySelectorAll("[data-back]")];
+    const topbarMenu = document.querySelector(".game-topbar [data-back]");
     const isVisible = (element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
@@ -172,10 +174,13 @@ try {
       primaryCount: primaryButtons.length,
       primaryDisabledCount: primaryButtons.filter((button) => button.disabled).length,
       primaryOpacity: primaryControls ? getComputedStyle(primaryControls).opacity : "missing",
+      menuCount: menuButtons.length,
+      menuEnabled: topbarMenu instanceof HTMLButtonElement && !topbarMenu.disabled,
+      menuInsideControls: Boolean(controls?.querySelector("[data-back]")),
+      menuVisible: topbarMenu ? isVisible(topbarMenu) : false,
       specialCount: specialButtons.length,
       specialDisabledCount: specialButtons.filter((button) => button.disabled).length,
       specialLabels: specialButtons.map((button) => button.textContent?.trim() ?? ""),
-      specialMenuEnabled: specialButtons[0] instanceof HTMLButtonElement && !specialButtons[0].disabled,
       specialVisible: specialButtons.every(isVisible),
       totalButtons: primaryButtons.length + specialButtons.length
     };
@@ -186,10 +191,13 @@ try {
     hiddenControllerState.primaryCount !== 10 ||
     hiddenControllerState.primaryDisabledCount !== 10 ||
     hiddenControllerState.primaryOpacity !== "0" ||
-    hiddenControllerState.specialCount !== 6 ||
-    JSON.stringify(hiddenControllerState.specialLabels) !== JSON.stringify(["메뉴", "동전", "시작", "OK", "저장", "불러오기"]) ||
+    hiddenControllerState.menuCount !== 1 ||
+    !hiddenControllerState.menuEnabled ||
+    hiddenControllerState.menuInsideControls ||
+    !hiddenControllerState.menuVisible ||
+    hiddenControllerState.specialCount !== 5 ||
+    JSON.stringify(hiddenControllerState.specialLabels) !== JSON.stringify(["동전", "시작", "OK", "저장", "불러오기"]) ||
     hiddenControllerState.specialDisabledCount !== 5 ||
-    !hiddenControllerState.specialMenuEnabled ||
     !hiddenControllerState.specialVisible
   ) {
     throw new Error(`Boot controller visibility/disabled state is wrong: ${JSON.stringify(hiddenControllerState)}`);
@@ -516,6 +524,8 @@ try {
     const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
     const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
     const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
+    const menuButtons = [...document.querySelectorAll("[data-back]")];
+    const topbarMenu = document.querySelector(".game-topbar [data-back]");
     const toRect = (element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -622,9 +632,13 @@ try {
         const style = getComputedStyle(button);
         return Number.parseFloat(style.opacity || "1") <= 0.5;
       }),
+      menuCount: menuButtons.length,
+      menuEnabled: topbarMenu instanceof HTMLButtonElement && !topbarMenu.disabled,
+      menuInsideControls: Boolean(surface?.querySelector("[data-back]")),
+      menuRect: topbarMenu ? toRect(topbarMenu) : null,
+      menuVisible: topbarMenu ? isVisible(topbarMenu) : false,
       specialActions: specialButtons.map((button) => (
         button.getAttribute("data-action") ??
-        (button.hasAttribute("data-back") ? "menu" : null) ??
         (button.hasAttribute("data-save-state") ? "save" : null) ??
         (button.hasAttribute("data-load-state") ? "load" : null) ??
         "unknown"
@@ -637,6 +651,7 @@ try {
       stickRect,
       surface: surface?.getAttribute("data-touch-surface") ?? "none",
       viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
       zoneActions: zones.map((zone) => zone.getAttribute("data-action")),
       zoneDetails,
       zonesVisible: zones.every(isVisible)
@@ -646,13 +661,26 @@ try {
     controllerLayout.surface !== "virtual" ||
     JSON.stringify(controllerLayout.zoneActions) !== JSON.stringify(["up", "right", "down", "left"]) ||
     controllerLayout.buttonCount !== 6 ||
-    controllerLayout.specialCount !== 6 ||
-    JSON.stringify(controllerLayout.specialActions) !== JSON.stringify(["menu", "coin", "start", "ok", "save", "load"])
+    controllerLayout.specialCount !== 5 ||
+    JSON.stringify(controllerLayout.specialActions) !== JSON.stringify(["coin", "start", "ok", "save", "load"]) ||
+    controllerLayout.menuCount !== 1 ||
+    controllerLayout.menuInsideControls ||
+    !controllerLayout.menuEnabled ||
+    !controllerLayout.menuVisible
   ) {
     throw new Error(`Ponpoko does not use the universal mobile controller: ${JSON.stringify(controllerLayout)}`);
   }
   if (!controllerLayout.stageRect || !controllerLayout.controlRect || controllerLayout.controlRect.top < controllerLayout.stageRect.bottom - 1) {
     throw new Error(`Universal controller overlaps gameplay: ${JSON.stringify(controllerLayout)}`);
+  }
+  if (
+    !controllerLayout.menuRect ||
+    controllerLayout.menuRect.top < -1 ||
+    controllerLayout.menuRect.left < -1 ||
+    controllerLayout.menuRect.right > controllerLayout.viewportWidth + 1 ||
+    controllerLayout.menuRect.bottom > controllerLayout.stageRect.top + 1
+  ) {
+    throw new Error(`Mobile menu is not isolated above gameplay: ${JSON.stringify(controllerLayout)}`);
   }
   if (!controllerLayout.zonesVisible || !controllerLayout.buttonsVisible || !controllerLayout.specialVisible) {
     throw new Error(`Universal controller controls are not visible: ${JSON.stringify(controllerLayout)}`);
@@ -723,8 +751,52 @@ try {
   ) {
     throw new Error(`Compact iPhone controller layout does not fit: ${JSON.stringify(compactControllerFit)}`);
   }
+
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.waitForTimeout(250);
+  const landscapeMenuIsolation = await page.evaluate(() => {
+    const menu = document.querySelector(".game-topbar [data-back]");
+    const stage = document.querySelector(".game-stage");
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top
+      };
+    };
+    const style = menu ? getComputedStyle(menu) : null;
+
+    return {
+      controllerHasMenu: Boolean(document.querySelector('[data-touch-surface="virtual"] [data-back]')),
+      menuCount: document.querySelectorAll("[data-back]").length,
+      menuRect: menu ? toRect(menu) : null,
+      menuVisible: Boolean(menu) && style?.display !== "none" && style?.visibility !== "hidden",
+      stageRect: stage ? toRect(stage) : null,
+      viewportHeight: innerHeight,
+      viewportWidth: innerWidth
+    };
+  });
+  if (
+    landscapeMenuIsolation.menuCount !== 1 ||
+    landscapeMenuIsolation.controllerHasMenu ||
+    !landscapeMenuIsolation.menuVisible ||
+    !landscapeMenuIsolation.menuRect ||
+    !landscapeMenuIsolation.stageRect ||
+    landscapeMenuIsolation.menuRect.top < -1 ||
+    landscapeMenuIsolation.menuRect.left < -1 ||
+    landscapeMenuIsolation.menuRect.right > landscapeMenuIsolation.viewportWidth + 1 ||
+    landscapeMenuIsolation.menuRect.bottom > landscapeMenuIsolation.stageRect.top + 1 ||
+    landscapeMenuIsolation.menuRect.bottom > landscapeMenuIsolation.viewportHeight + 1
+  ) {
+    throw new Error(`Landscape mobile menu is not isolated above gameplay: ${JSON.stringify(landscapeMenuIsolation)}`);
+  }
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.waitForTimeout(250);
+
   const touchInterceptors = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled), .game-topbar [data-action]')].filter((element) => {
+    const controls = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled), .game-topbar [data-action], .game-topbar [data-back]')].filter((element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       return rect.width > 0 &&
@@ -902,7 +974,7 @@ try {
   }
 
   await seedAutosaveFromRuntimeState(page, "ponpoko");
-  await tapLocator(page, page.locator('[data-touch-surface="virtual"] [data-back]'), "controller menu");
+  await tapLocator(page, page.locator(".game-topbar [data-back]"), "topbar menu");
   await page.waitForURL(baseUrl, { timeout: 10_000 });
   await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
   const autosaveSummary = await readAutosaveSummary(page, "ponpoko");
@@ -939,7 +1011,7 @@ try {
     );
   }
   await waitForGameStatus(page, "플레이 중");
-  await tapLocator(page, page.locator('[data-touch-surface="virtual"] [data-back]'), "controller menu after autosave continue");
+  await tapLocator(page, page.locator(".game-topbar [data-back]"), "topbar menu after autosave continue");
   await page.waitForURL(baseUrl, { timeout: 10_000 });
   await page.locator('[data-game-id="ponpoko"]').waitFor({ timeout: 5_000 });
   const menuState = await page.evaluate(() => ({

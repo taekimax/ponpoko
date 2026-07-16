@@ -69,11 +69,6 @@ export type SpecialControl =
       action: Extract<ControlAction, "coin" | "ok" | "start">;
     }
   | {
-      id: "menu";
-      label: string;
-      type: "menu";
-    }
-  | {
       id: "save";
       label: string;
       type: "saveState";
@@ -85,7 +80,6 @@ export type SpecialControl =
     };
 
 export const SPECIAL_CONTROLS: SpecialControl[] = [
-  { id: "menu", label: "메뉴", type: "menu" },
   { action: "coin", id: "coin", label: "동전", type: "control" },
   { action: "start", id: "start", label: "시작", type: "control" },
   { action: "ok", id: "ok", label: "OK", type: "control" },

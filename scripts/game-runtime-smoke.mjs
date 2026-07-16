@@ -403,8 +403,10 @@ async function assertMobileControllerLayout(page, target, game) {
     const zones = [...document.querySelectorAll('[data-touch-surface="virtual"] [data-touch-zone]')];
     const buttons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-game-button')];
     const specialButtons = [...document.querySelectorAll('[data-touch-surface="virtual"] .virtual-special-button')];
+    const menuButtons = [...document.querySelectorAll("[data-back]")];
+    const topbarMenu = document.querySelector(".game-topbar [data-back]");
     const activeControls = [...document.querySelectorAll(
-      '[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled)'
+      '[data-touch-surface="virtual"] [data-touch-zone], [data-touch-surface="virtual"] .virtual-game-button:not(:disabled), [data-touch-surface="virtual"] .virtual-special-button:not(:disabled), .game-topbar [data-back]'
     )];
     const toRect = (element) => {
       const rect = element.getBoundingClientRect();
@@ -541,10 +543,14 @@ async function assertMobileControllerLayout(page, target, game) {
         const style = getComputedStyle(button);
         return Number.parseFloat(style.opacity || "1") <= 0.5;
       }),
+      menuCount: menuButtons.length,
+      menuEnabled: topbarMenu instanceof HTMLButtonElement && !topbarMenu.disabled,
+      menuInsideControls: Boolean(controls?.querySelector("[data-back]")),
+      menuRect: topbarMenu ? toRect(topbarMenu) : null,
+      menuVisible: topbarMenu ? isVisible(topbarMenu) : false,
       scrollFits: (document.scrollingElement?.scrollHeight ?? 0) <= window.innerHeight + 1,
       specialActions: specialButtons.map((button) => (
         button.getAttribute("data-action") ??
-        (button.hasAttribute("data-back") ? "menu" : null) ??
         (button.hasAttribute("data-save-state") ? "save" : null) ??
         (button.hasAttribute("data-load-state") ? "load" : null) ??
         "unknown"
@@ -575,8 +581,12 @@ async function assertMobileControllerLayout(page, target, game) {
     layout.surface !== "virtual" ||
     layout.zoneCount !== 4 ||
     layout.buttonCount !== 6 ||
-    layout.specialCount !== 6 ||
-    JSON.stringify(layout.specialActions) !== JSON.stringify(["menu", "coin", "start", "ok", "save", "load"])
+    layout.specialCount !== 5 ||
+    JSON.stringify(layout.specialActions) !== JSON.stringify(["coin", "start", "ok", "save", "load"]) ||
+    layout.menuCount !== 1 ||
+    layout.menuInsideControls ||
+    !layout.menuEnabled ||
+    !layout.menuVisible
   ) {
     throw new Error(`${target.label} ${game.id} expected universal virtual controls, got ${JSON.stringify(layout)}`);
   }
@@ -589,6 +599,15 @@ async function assertMobileControllerLayout(page, target, game) {
     layout.controlsRect.right > layout.viewportWidth + 1
   ) {
     throw new Error(`${target.label} ${game.id} controls overlap gameplay: ${JSON.stringify(layout)}`);
+  }
+  if (
+    !layout.menuRect ||
+    layout.menuRect.top < -1 ||
+    layout.menuRect.left < -1 ||
+    layout.menuRect.right > layout.viewportWidth + 1 ||
+    layout.menuRect.bottom > layout.stageRect.top + 1
+  ) {
+    throw new Error(`${target.label} ${game.id} menu is not isolated above gameplay: ${JSON.stringify(layout)}`);
   }
   if (!layout.zonesVisible || !layout.buttonsVisible || !layout.specialVisible) {
     throw new Error(`${target.label} ${game.id} controls are not visible: ${JSON.stringify(layout)}`);

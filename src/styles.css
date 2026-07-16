@@ -848,7 +848,7 @@ p {
 
 .virtual-special-buttons {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: clamp(5px, 1.4vw, 8px);
   width: 100%;
   min-width: 0;

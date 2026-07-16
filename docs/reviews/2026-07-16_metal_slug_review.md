@@ -21,7 +21,7 @@ Add the existing `roms/mslug.zip` to the active game catalog and make it reliabl
 | P2 | Desktop/mobile playability | I2 Metal Slug runtime fixture with exact input/video checks | Chromium and iPhone-sized WebKit gameplay smoke | done |
 | P3 | No corrupted sprites | I3 graphics-ROM CRC checks and captured-frame visual oracle | Archive extraction checks plus desktop/mobile screenshot review | done |
 | P4 | Efficient large-ROM handling | I4 single app-owned IndexedDB cache; bypass Service Worker ROM caching | Unit tests and same-context browser reuse check | done |
-| P5 | Release closure | I5 commit, push, Pages publish, live smoke, cleanup | GitHub workflow and live URL readback | pending |
+| P5 | Release closure | I5 commit, push, Pages publish, live smoke, cleanup | GitHub workflow and live URL readback | done |
 
 ## Work Ledger
 
@@ -30,7 +30,7 @@ Add the existing `roms/mslug.zip` to the active game catalog and make it reliabl
 | W1 | mslug_planner | done | Read-only implementation and verification plan | P1-P5 risks and gates delivered |
 | W2 | mslug_rom_forensics | done | Read-only ROM/core/history forensics | Exact failure cause and ROM/BIOS compatibility evidence delivered |
 | W3 | mslug_oss_cache | done | Read-only upstream FBNeo/EmulatorJS/cache research | Primary-source runtime and cache recommendations delivered |
-| W4 | codex | in_progress | Tests, implementation, browser verification, integration | I1-I5 green without scope drift |
+| W4 | codex | done | Tests, implementation, browser verification, integration | I1-I5 green without scope drift |
 | W5 | mslug_evaluator | done | Independent contract/diff/runtime evidence review | GO; no unresolved Critical, High, Medium, or Low findings |
 
 ## Baseline and Red Test
@@ -47,7 +47,7 @@ Add the existing `roms/mslug.zip` to the active game catalog and make it reliabl
 | I2 | P2 | codex | done | Reuse the shared input router and existing three-button profile | Desktop/mobile 304x224 runtime and 0/8/1 input smoke passed |
 | I3 | P3 | codex | done | Guard known-good ROM bytes and observe actual runtime output | C-ROM/BIOS CRC checks and Mission 1 screenshot evidence passed |
 | I4 | P4 | codex | done | Keep the existing deferred IndexedDB cache; remove only duplicate Service Worker ROM caching | Cold 1 / warm 0 / CacheStorage 0 integration checks passed on both targets |
-| I5 | P5 | codex | pending | Release only after evaluator GO | Pages workflow and live browser smoke |
+| I5 | P5 | codex | done | Release only after evaluator GO | Commit `a817b7d`, Pages workflow `29473753168`, live desktop/mobile smoke, cleanup |
 
 ## Audit Findings
 
@@ -89,11 +89,11 @@ Add the existing `roms/mslug.zip` to the active game catalog and make it reliabl
 | Catalog-wide browser regression | pass: final `npm run browser:smoke` covered all 8 games on desktop Chromium/mobile WebKit plus app/prep-failure flows |
 | Screenshot/graphics review | pass: desktop 87 and mobile 83 quantized color bins; histogram distance 0.00391; coherent character/enemy/background sprites confirmed |
 | Independent evaluator | GO: relevant 64/64, full 111/111, typecheck, dist/hash smoke, both Mission 1 captures, input and cache behavior independently rechecked |
-| Pages/live/cleanup | pending |
+| Pages/live/cleanup | pass: commit `a817b7d`; workflow `29473753168` build/deploy success; live desktop 87/mobile 86 color bins, distance 0.00645, cold 1/warm 0/CacheStorage 0; generated residue removed |
 
 ## Deletion Impact Note
 
-No tracked test, documentation, or configuration file deletion is planned. Generated build output, browser profiles, screenshots, and temporary logs created during this session will be removed after release or rollback.
+No tracked test, documentation, or configuration file was deleted. Generated `dist`, TypeScript/Vite caches, browser screenshots/profiles, archive snapshots, and temporary test inventories created during this session were removed after live verification.
 
 ## Progress Log
 
@@ -105,6 +105,8 @@ No tracked test, documentation, or configuration file deletion is planned. Gener
 
 `CP3 | I1-I4 | mslug_evaluator + codex | done | final catalog-wide browser smoke and independent review GO with no unresolved findings | release I5`
 
+`CP4 | I5 | codex | done | commit a817b7d, Pages 29473753168, live desktop/mobile Mission 1 and cache reuse green, generated residue removed | close review`
+
 ## Closure
 
-Pending.
+Metal Slug is active in the catalog through the verified FBNeo/Neo Geo parent path. Static archive guards prevent the historical graphics-layout mismatch, desktop Chromium and iPhone-sized WebKit reached actual P1 Mission 1 with coherent sprites and mapped controls, and warm launches reused the single IndexedDB ROM copy without another network request. The implementation was published to GitHub Pages and verified live. Physical-iPhone memory, heat, and storage-eviction behavior remain external validation risks.

@@ -1,0 +1,149 @@
+# Specification
+
+## Objective
+
+Build a Bubble Bobble-only WebRTC streaming PoC in which one iPhone host runs the existing EmulatorJS 4.2.3 game and one iPhone guest receives video/audio and sends only safe P2 input. Preserve all current 1P, save, service-worker, and catalog behavior behind a feature flag.
+
+Planning status: `done`.
+
+Implementation-entry status: `needs-clarification` until W0 approvals are recorded.
+
+## User / Use Case
+
+- Primary runtime: iPhone 15 Pro, Safari, including Home Screen installed web-app mode.
+- Participants: exactly one host and one guest.
+- Host: launches Bubble Bobble, opens a private room, shares QR/link/code, receives guest readiness, and alone generates the new-game Coin/Start sequence.
+- Guest: opens the invitation, taps `참가하고 소리 켜기` once, receives the host's game media, and controls P2 left/right/fire/jump.
+- Expected normal app UX: host one tap, or at most two taps if the WebKit OpenAL fallback is needed; guest one tap. OS camera/URL interactions are measured separately.
+- Android is not part of the current requested implementation or acceptance matrix.
+
+## Product Requirements and Traceability
+
+W0 and W11 cover the full P1-P14 contract. The table lists the focused implementation owners in addition to those cross-cutting gates.
+
+| ID | Specification | Focused work | Acceptance summary |
+|---|---|---|---|
+| P1 | Only the host runs the Bubble Bobble ROM and core. | W6 | Guest ROM/core/loader requests, ROM cache access, and `EJS_emulator` creation are all zero. |
+| P2 | Normal app flow targets host one tap, permits one WebKit audio fallback tap, and requires exactly one guest CTA tap. | W2, W3, W6, W7, W12 | Host app taps are at most two, guest app tap is one, and no network/ICE setting is exposed. |
+| P3 | QR, system share link, and 8-character code refer to the same one-time invitation. | W7 | All three paths work; invitation expires after five minutes and reuse is rejected. |
+| P4 | Stream playback requires no camera or microphone permission. | W2, W6, W7 | Safari permission prompts are zero and audio unlock succeeds. |
+| P5 | Guest receives 30 fps game video and game audio. | W2, W5, W6 | First-frame/audio watchdog and both 20-minute path measurements pass. |
+| P6 | Remote controls are forced to P2 and allow only left, right, fire, and jump. | W1, W5, W6 | P1/P2 simultaneous-input and allowlist tests pass with zero wrong-player applications. |
+| P7 | Startup assist is blocked before guest readiness; exactly one host-owned new 2P start occurs after all readiness conditions. | W3, W5, W9 | W5 owns only readiness/start-command behavior against a test double; W9 installs all guards, binds the real runtime once, and proves pre-bind/pre-ready Coin/Start calls are zero. |
+| P8 | Direct failure falls back automatically to TURN without a user choice. | W3, W4, W5 | Forced `relay` integration passes and UI does not expose transport selection. |
+| P9 | Short disconnects recover automatically; reload within 60 seconds needs no QR rescan. | W3, W4, W5, W8 | Fault/reload matrix meets the recovery criteria. |
+| P10 | Missing input heartbeat releases all P2 input within two seconds. | W1, W3, W5, W8 | A 1.5-second lease and forced-disconnect tests yield zero stuck P2 inputs. |
+| P11 | A 2P session neither reads nor writes the existing 1P autosave. | W9 | Lifecycle save calls are zero and the before/after 1P save checksum is identical. |
+| P12 | Invitation, signaling, and TURN credentials are least-privilege, short-lived, and redacted. | W3, W4, W5, W7, W8 | Security contract, origin/rate/expiry checks, and log-redaction tests pass. |
+| P13 | Connection, path, quality, and recovery are observable without personal data. | W10, W12 | Required summarized stats and a random diagnostic ID are recorded without sensitive payloads. |
+| P14 | With the feature flag off, existing 1P, games, saves, and service-worker behavior remain unchanged. | W9, W12 | Both feature-flag-off smoke suites and checksum/service-worker checks pass. |
+
+## MVP Work Breakdown
+
+| Work | Requirements | Deliverable |
+|---|---|---|
+| W0 | P1-P14 | Synchronized `.loop/` contract plus explicit approval decisions for signaling, TURN, costs/ownership, QR dependency, and the two-iPhone matrix; branch disposition is already recorded as a docs-only `origin/2p-bubble` handoff with `main` untouched. |
+| W1 | P6, P10 | Player-aware emulator input contract with active state keyed by `(player, input)`. |
+| W2 | P2, P4, P5 | Minimal capture-spike harness and EmulatorJS 4.2.3 `StreamCaptureAdapter`, including the one-time host audio fallback; actual-iPhone execution is required for closure. |
+| W3 | P2, P7, P8, P9, P10, P12 | Typed protocol, direction allowlists, connection epoch, sequence filtering, and session reducer. |
+| W4 | P3, P8, P9, P12 | Minimal approved signaling API and short-lived coturn credential integration. |
+| W5 | P5, P6, P7, P8, P9, P10, P12 | Host `PeerSession`, media sender, P2 application, and readiness/start-command contract with the real Coin/Start runtime port unbound; integration uses a test double only. |
+| W6 | P1, P2, P4, P5, P6 | ROM-free guest viewer and P2-only controls. |
+| W7 | P2, P3, P4, P12 | QR/share/code invitation UX and one-time token exchange. |
+| W8 | P9, P10, P12 | Heartbeat, neutral lease, epoch reset, ICE restart, and foreground recovery. |
+| W9 | P7, P11, P14 | Single atomic real-runtime binding owner: set 2P mode before game start, install startup/autosave/lifecycle-save guards, then first bind and execute the idempotent Coin/Start sequence after readiness. |
+| W10 | P13 | Redacted summarized WebRTC/game-session diagnostics. |
+| W11 | P1-P14 | Actual-device direct/relay matrix, reconnect trials, and two 20-minute soaks with artifacts. |
+| W12 | P2, P13, P14 | Feature-flagged Pages release, service-worker cache update, full regression checks, and rollback verification. |
+
+## MVP Scope
+
+- Bubble Bobble (`bublbobl`) only.
+- One host and one guest, private one-time invitation, five-minute invite TTL, and one-hour maximum PoC session.
+- Host-only ROM/core/runtime execution and 512x448 staging-canvas capture at 30 fps, initially around 1.5 Mbps.
+- OpenAL game audio connected to a `MediaStreamDestination` and verified as non-silent on actual iPhone hardware.
+- WebRTC video/audio plus reliable ordered `control` and unordered no-retransmit `input` DataChannels.
+- QR, native share link, and 8-character manual code.
+- Direct ICE path with automatic TURN/UDP, TURN/TCP, then TURNS 443/TCP fallback.
+- P2 full-state heartbeat, 1.5-second lease, epoch and sequence filtering, reconnect grace, and foreground recovery.
+- Feature-flagged diagnostics and release/rollback path.
+
+## Out of Scope
+
+- EmulatorJS 4.3.0-pre upgrade or upstream netplay adoption as a runtime replacement.
+- Guest-side ROM/core/loader/emulator execution, lockstep, rollback, or save transfer.
+- More than two players, spectators, public rooms, accounts, chat, or voice.
+- Android implementation or comparison testing for this request.
+- Offline LAN discovery, Bluetooth/Nearby pairing, host migration, background continuous play, or production HA.
+- Broad game abstraction, unrelated refactoring, speculative exception handling, or unapproved dependencies.
+- External infrastructure, DNS, secrets, or paid-resource creation before explicit W0 approval.
+
+## Key Flows
+
+### Host
+
+1. Tap `친구와 2인 플레이`; set `twoPlayerSessionMode` before `startGame()`.
+2. Start a fresh Bubble Bobble runtime without startup assist or autosave, capture media, and create the approved private room.
+3. If the post-ROM OpenAL context is not running or the captured audio is silent, expose `방 열고 소리 켜기` once.
+4. Show QR/share/code while awaiting exactly one guest.
+5. After runtime, media tracks, both DataChannels, and guest readiness are all true, the W9-owned guarded runtime binding runs one host-owned Coin/Start sequence.
+6. On disconnect, neutralize P2 first, recover automatically within the bounded policy, and never save the 2P session.
+
+### Guest
+
+1. Open the invite fragment or enter the eight-character code; do not start networking or playback automatically.
+2. On `참가하고 소리 켜기`, exchange the invite, resume the guest audio context, prepare muted inline video, and connect.
+3. Load no ROM/core/loader/emulator resources.
+4. Send only P2 full-state input, `ready`, `ping`, and `leave`.
+5. On reload within 60 seconds, use only a `sessionStorage` reconnect token.
+
+### Failure and Recovery
+
+1. At 1.5 seconds without a valid input update, release all P2 inputs.
+2. Keep transient disconnect UI quiet for 2.5 seconds, then pause and attempt one bounded recovery.
+3. On failed direct recovery, refresh short-lived TURN credentials and recreate the peer connection once.
+4. Stop automatic retry after roughly 10-15 seconds and offer one user action.
+
+## Fixed Technical Notes
+
+- Keep vendored EmulatorJS 4.2.3.
+- `PlayerInputAdapter` owns player-aware press/release state; network payloads never choose a player.
+- Host always applies remote input as `player=1`.
+- Input payload carries protocol version, server-issued `connectionEpoch`, monotonically increasing sequence, and at most four allowed buttons.
+- Host resets P2 neutral and the high-water mark when a newly authenticated epoch opens; stale or foreign epochs are rejected.
+- W5 owns the `TwoPlayerSessionController` readiness/start-command contract but cannot bind or call the real Coin/Start runtime; W5 integration uses a test double only.
+- W9 is the sole real-runtime binding owner. In one guarded initialization path it sets `twoPlayerSessionMode` before `startGame()`, installs startup-assist/autosave/lifecycle-save guards, and only then binds Coin/Start. Actual runtime calls before this point are forbidden.
+- The host start command uses an idempotency key/acknowledgement and reconnect cannot re-run it.
+- Signaling and coturn live outside GitHub Pages. Pages remains frontend-only.
+- Existing 1P save schema/key, service worker, ROM path, and non-Bubble-Bobble behavior are invariants.
+
+## W2 Development and Physical-Evidence Boundary
+
+- Physical-device execution is unavailable during the development stage.
+- After W0 approval and W1 completion, implement the smallest reproducible capture-spike harness/adapter and local automated tests needed to run the planned iPhone spike later.
+- The first physical validation target within W2 remains `ROM load -> actual OpenAL context -> non-silent track -> audible guest output`; desktop API existence, track count, synthetic audio, or mocked results do not close W2.
+- If the harness/adapter is locally complete but the physical test cannot run, assign W2 `partial` or `blocked`, document the exact command/steps for later execution, and stop before W3.
+- Do not change media/session architecture merely to bypass the missing evidence.
+
+## W2-W4 Open-Source Provenance Evidence
+
+- Each W2, W3, and W4 slice report lists every consulted open-source project, source file, document, or implementation example, with URL and exact commit/tag/version when available.
+- Each report explicitly states whether any code was copied. If yes, it records the governing license, compatibility determination, required attribution, and where that attribution was applied.
+- Consultation/reporting is not authorization to add a dependency or copy code. Existing W0/human-review approval requirements still apply before either action.
+
+## W11 / W12 Release Boundary
+
+- Full W12 entry requires W11 status `done`, not merely evaluated or partially evidenced.
+- If actual-device W11 evidence requires a staging build or endpoint preparation, record it as a narrowly scoped W11 staging-preparation activity. It may not include W12 production completion, public release, final service-worker rollout, or a claim that W12 started.
+
+## Unknowns / Approval Gate
+
+The following remain `needs-clarification`:
+
+- Signaling provider and exact domain.
+- coturn provider, cost ceiling, and DNS/secret owner.
+- Approval or rejection of a new QR-generation dependency.
+- Exact two-device inventory and iOS/Safari versions for the iPhone 15 Pro Safari/Home Screen matrix.
+Branch disposition is resolved for handoff only: publish the W0 artifacts to `origin/2p-bubble`, leave `main` and GitHub Pages unchanged, and require a separate decision before any eventual merge.
+
+No implementation code, dependency, or external-service change is authorized until the four open items are resolved in `.loop/05_decisions.md`. The documentation-only branch publication does not make W0 `done`.

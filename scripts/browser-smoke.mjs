@@ -1199,19 +1199,21 @@ function assertUniversalControllerGeometry(layout, label) {
   const buttons = layout.buttonCenters;
   if (
     buttons.length !== 6 ||
-    !isRisingDiagonal(buttons.slice(0, 3)) ||
-    !isRisingDiagonal(buttons.slice(3, 6))
+    !areSeparatedButtonRows(buttons.slice(0, 3), buttons.slice(3, 6))
   ) {
-    throw new Error(`${label} action buttons are not arranged in two rising diagonals: ${JSON.stringify(layout)}`);
+    throw new Error(`${label} action buttons are not arranged in two separated arcade rows: ${JSON.stringify(layout)}`);
   }
 }
 
-function isRisingDiagonal(buttons) {
-  return buttons.length === 3 &&
+function areSeparatedButtonRows(topRow, bottomRow) {
+  const isRow = (buttons) => buttons.length === 3 &&
     buttons[0].x < buttons[1].x &&
     buttons[1].x < buttons[2].x &&
-    buttons[0].y > buttons[1].y &&
-    buttons[1].y > buttons[2].y;
+    Math.max(...buttons.map((button) => button.y)) - Math.min(...buttons.map((button) => button.y)) <= 1;
+
+  return isRow(topRow) &&
+    isRow(bottomRow) &&
+    Math.max(...topRow.map((button) => button.y)) < Math.min(...bottomRow.map((button) => button.y));
 }
 
 async function assertControlFeedback(page, selector, label) {

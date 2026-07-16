@@ -1,4 +1,4 @@
-const CACHE_VERSION = "2026-07-16-metal-slug-v1";
+const CACHE_VERSION = "2026-07-16-input-scrub-v1";
 const STATIC_CACHE = `ponpoko-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `ponpoko-runtime-${CACHE_VERSION}`;
 const APP_SHELL = [

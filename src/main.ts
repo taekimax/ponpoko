@@ -86,6 +86,8 @@ let runtimeControlsEnabled = false;
 let runtimeControlsFinalizing = false;
 let runtimeAutosaveRestored = false;
 let runtimePrepStatus: BootDebugRuntimePrep = "pending";
+let disposeControlHandlers: (() => void) | null = null;
+let releaseCurrentControlPointers: (() => void) | null = null;
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
 const romCacheSaveQueue = new DeferredTaskQueue();
 
@@ -107,6 +109,8 @@ function setState(nextState: ViewState): void {
 }
 
 function render(): void {
+  disposeControlHandlers?.();
+
   if (state.name === "menu") {
     renderMenu();
     return;
@@ -556,154 +560,270 @@ async function startGame(game: GameEntry, startMode: AutosaveStartMode): Promise
 interface ActivePointer {
   currentActions: ControlAction[];
   pressed: boolean;
+  sourceActionElement?: HTMLElement;
   sourceStick?: HTMLElement;
 }
 
 function wireControls(root: HTMLElement): void {
   const activePointers = new Map<string, ActivePointer>();
+  const listenerDisposers: Array<() => void> = [];
+  const addListener = (
+    target: EventTarget,
+    type: string,
+    listener: EventListener,
+    options?: boolean | AddEventListenerOptions
+  ) => {
+    target.addEventListener(type, listener, options);
+    listenerDisposers.push(() => target.removeEventListener(type, listener, options));
+  };
+  const releaseAllPointers = () => releaseAllControlPresses(activePointers);
 
-  wireVirtualSticks(root, activePointers);
-
-  root.querySelectorAll<HTMLElement>("[data-action]").forEach((element) => {
-    if (element.closest(".virtual-stick")) {
+  const pointerDown = (rawEvent: Event) => {
+    const event = rawEvent as PointerEvent;
+    const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
+    if (!startControlPointer(
+      pointerId,
+      root,
+      event.target,
+      event.clientX,
+      event.clientY,
+      activePointers
+    )) {
       return;
     }
 
-    const action = element.dataset.action as ControlAction | undefined;
-    if (!action) {
+    event.preventDefault();
+    trySetPointerCapture(root, event.pointerId);
+  };
+  const pointerMove = (rawEvent: Event) => {
+    const event = rawEvent as PointerEvent;
+    const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
+    if (!activePointers.has(pointerId)) {
       return;
     }
 
-    element.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      if (isControlDisabled(element)) {
-        return;
-      }
-      startControlPress(
-        `${POINTER_PREFIX}${event.pointerId}`,
-        action,
-        activePointers
-      );
-      trySetPointerCapture(element, event.pointerId);
-    });
-
-    const release = (event: PointerEvent) => {
-      event.preventDefault();
-      endControlPress(`${POINTER_PREFIX}${event.pointerId}`, activePointers);
-    };
-
-    element.addEventListener("pointerup", release);
-    element.addEventListener("pointercancel", release);
-    element.addEventListener("pointerleave", release);
-
-    if (supportsPointerEvents()) {
+    event.preventDefault();
+    updateControlPointer(pointerId, root, event.clientX, event.clientY, activePointers);
+  };
+  const pointerEnd = (rawEvent: Event) => {
+    const event = rawEvent as PointerEvent;
+    const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
+    if (!activePointers.has(pointerId)) {
       return;
     }
 
-    element.addEventListener(
-      "touchstart",
-      (event) => {
-        event.preventDefault();
-        if (isControlDisabled(element)) {
-          return;
-        }
-        for (const touch of [...event.changedTouches]) {
-          startControlPress(
-            `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
-            action,
-            activePointers
-          );
-        }
-      },
-      { passive: false }
-    );
+    event.preventDefault();
+    endControlPress(pointerId, activePointers);
+  };
 
-    element.addEventListener(
-      "touchmove",
-      (event) => {
-        event.preventDefault();
-      },
-      { passive: false }
-    );
+  addListener(root, "pointerdown", pointerDown);
+  addListener(root, "lostpointercapture", pointerEnd);
+  addListener(document, "pointermove", pointerMove, { capture: true, passive: false });
+  addListener(document, "pointerup", pointerEnd, { capture: true });
+  addListener(document, "pointercancel", pointerEnd, { capture: true });
+  addListener(document, "pointerleave", pointerEnd);
+  addListener(window, "blur", releaseAllPointers, { capture: true });
 
-    const releaseTouch = (event: TouchEvent) => {
-      event.preventDefault();
+  if (!supportsPointerEvents()) {
+    const touchStart = (rawEvent: Event) => {
+      const event = rawEvent as TouchEvent;
+      releaseInactiveTouchPointers(event, activePointers);
+      let handled = false;
       for (const touch of [...event.changedTouches]) {
-        endControlPress(`${TOUCH_POINTER_PREFIX}${touch.identifier}`, activePointers);
-      }
-    };
-
-    element.addEventListener("touchend", releaseTouch, { passive: false });
-    element.addEventListener("touchcancel", releaseTouch, { passive: false });
-  });
-}
-
-function wireVirtualSticks(root: HTMLElement, activePointers: Map<string, ActivePointer>): void {
-  root.querySelectorAll<HTMLElement>(".virtual-stick").forEach((stick) => {
-    const mode = readDpadMode(stick);
-
-    stick.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      updateDpadPress(
-        `${POINTER_PREFIX}${event.pointerId}`,
-        stick,
-        mode,
-        event.clientX,
-        event.clientY,
-        activePointers
-      );
-      trySetPointerCapture(stick, event.pointerId);
-    });
-
-    stick.addEventListener("pointermove", (event) => {
-      const pointerId = `${POINTER_PREFIX}${event.pointerId}`;
-      if (!activePointers.has(pointerId)) {
-        return;
-      }
-      event.preventDefault();
-      updateDpadPress(pointerId, stick, mode, event.clientX, event.clientY, activePointers);
-    });
-
-    const releasePointer = (event: PointerEvent) => {
-      event.preventDefault();
-      endControlPress(`${POINTER_PREFIX}${event.pointerId}`, activePointers);
-    };
-
-    stick.addEventListener("pointerup", releasePointer);
-    stick.addEventListener("pointercancel", releasePointer);
-    stick.addEventListener("pointerleave", releasePointer);
-
-    if (supportsPointerEvents()) {
-      return;
-    }
-
-    const updateTouches = (event: TouchEvent) => {
-      event.preventDefault();
-      for (const touch of [...event.changedTouches]) {
-        updateDpadPress(
+        handled = startControlPointer(
           `${TOUCH_POINTER_PREFIX}${touch.identifier}`,
-          stick,
-          mode,
+          root,
+          touch.target,
           touch.clientX,
           touch.clientY,
           activePointers
-        );
+        ) || handled;
+      }
+      if (handled) {
+        event.preventDefault();
       }
     };
-
-    stick.addEventListener("touchstart", updateTouches, { passive: false });
-    stick.addEventListener("touchmove", updateTouches, { passive: false });
-
-    const releaseTouch = (event: TouchEvent) => {
-      event.preventDefault();
+    const touchMove = (rawEvent: Event) => {
+      const event = rawEvent as TouchEvent;
+      releaseInactiveTouchPointers(event, activePointers);
+      let handled = false;
       for (const touch of [...event.changedTouches]) {
-        endControlPress(`${TOUCH_POINTER_PREFIX}${touch.identifier}`, activePointers);
+        const pointerId = `${TOUCH_POINTER_PREFIX}${touch.identifier}`;
+        if (!activePointers.has(pointerId)) {
+          continue;
+        }
+        handled = true;
+        updateControlPointer(pointerId, root, touch.clientX, touch.clientY, activePointers);
+      }
+      if (handled) {
+        event.preventDefault();
+      }
+    };
+    const touchEnd = (rawEvent: Event) => {
+      const event = rawEvent as TouchEvent;
+      let handled = false;
+      for (const touch of [...event.changedTouches]) {
+        const pointerId = `${TOUCH_POINTER_PREFIX}${touch.identifier}`;
+        handled = activePointers.has(pointerId) || handled;
+        endControlPress(pointerId, activePointers);
+      }
+      releaseInactiveTouchPointers(event, activePointers);
+      if (handled) {
+        event.preventDefault();
       }
     };
 
-    stick.addEventListener("touchend", releaseTouch, { passive: false });
-    stick.addEventListener("touchcancel", releaseTouch, { passive: false });
-  });
+    addListener(root, "touchstart", touchStart, { passive: false });
+    addListener(document, "touchmove", touchMove, { capture: true, passive: false });
+    addListener(document, "touchend", touchEnd, { capture: true, passive: false });
+    addListener(document, "touchcancel", touchEnd, { capture: true, passive: false });
+  }
+
+  const dispose = () => {
+    releaseAllPointers();
+    for (const disposeListener of listenerDisposers.splice(0)) {
+      disposeListener();
+    }
+    if (releaseCurrentControlPointers === releaseAllPointers) {
+      releaseCurrentControlPointers = null;
+    }
+    if (disposeControlHandlers === dispose) {
+      disposeControlHandlers = null;
+    }
+  };
+  releaseCurrentControlPointers = releaseAllPointers;
+  disposeControlHandlers = dispose;
+}
+
+function startControlPointer(
+  pointerId: string,
+  root: HTMLElement,
+  eventTarget: EventTarget | null,
+  clientX: number,
+  clientY: number,
+  activePointers: Map<string, ActivePointer>
+): boolean {
+  const stick = findControlElement(root, eventTarget, ".virtual-stick") ??
+    findControlElementAtPoint(root, clientX, clientY, ".virtual-stick");
+  const actionElement = stick
+    ? null
+    : findControlElement(root, eventTarget, "[data-action]") ??
+      findControlElementAtPoint(root, clientX, clientY, "[data-action]");
+
+  if (!stick && (!actionElement || isControlDisabled(actionElement))) {
+    return false;
+  }
+
+  endControlPress(pointerId, activePointers);
+  if (stick) {
+    updateDpadPress(
+      pointerId,
+      stick,
+      readDpadMode(stick),
+      clientX,
+      clientY,
+      activePointers
+    );
+    return true;
+  }
+
+  const action = actionElement?.dataset.action as ControlAction | undefined;
+  if (!actionElement || !action) {
+    return false;
+  }
+  startControlPress(pointerId, action, activePointers, actionElement);
+  return true;
+}
+
+function updateControlPointer(
+  pointerId: string,
+  root: HTMLElement,
+  clientX: number,
+  clientY: number,
+  activePointers: Map<string, ActivePointer>
+): void {
+  const activePointer = activePointers.get(pointerId);
+  if (!activePointer) {
+    return;
+  }
+
+  if (activePointer.sourceStick) {
+    updateDpadPress(
+      pointerId,
+      activePointer.sourceStick,
+      readDpadMode(activePointer.sourceStick),
+      clientX,
+      clientY,
+      activePointers
+    );
+    return;
+  }
+
+  const sourceActionElement = activePointer.sourceActionElement;
+  if (!sourceActionElement) {
+    updateControlPresses(pointerId, [], activePointers);
+    return;
+  }
+
+  const hitActionElement = findControlElementAtPoint(root, clientX, clientY, "[data-action]");
+  if (!sourceActionElement.matches(".virtual-game-button")) {
+    if (hitActionElement !== sourceActionElement) {
+      endControlPress(pointerId, activePointers);
+      return;
+    }
+  }
+
+  const actionElement = hitActionElement?.matches(".virtual-game-button") ||
+    hitActionElement === sourceActionElement
+    ? hitActionElement
+    : null;
+  const action = actionElement &&
+    !actionElement.closest(".virtual-stick") &&
+    !isControlDisabled(actionElement)
+    ? actionElement.dataset.action as ControlAction | undefined
+    : undefined;
+  updateControlPresses(pointerId, action ? [action] : [], activePointers);
+}
+
+function findControlElement(
+  root: HTMLElement,
+  eventTarget: EventTarget | null,
+  selector: string
+): HTMLElement | null {
+  if (!(eventTarget instanceof Element)) {
+    return null;
+  }
+  const element = eventTarget.closest<HTMLElement>(selector);
+  return element && root.contains(element) ? element : null;
+}
+
+function findControlElementAtPoint(
+  root: HTMLElement,
+  clientX: number,
+  clientY: number,
+  selector: string
+): HTMLElement | null {
+  for (const hitElement of document.elementsFromPoint(clientX, clientY)) {
+    const element = hitElement.closest<HTMLElement>(selector);
+    if (element && root.contains(element)) {
+      return element;
+    }
+  }
+  return null;
+}
+
+function releaseInactiveTouchPointers(
+  event: TouchEvent,
+  activePointers: Map<string, ActivePointer>
+): void {
+  const activeTouchIds = new Set(
+    [...event.touches].map((touch) => `${TOUCH_POINTER_PREFIX}${touch.identifier}`)
+  );
+  for (const pointerId of [...activePointers.keys()]) {
+    if (pointerId.startsWith(TOUCH_POINTER_PREFIX) && !activeTouchIds.has(pointerId)) {
+      endControlPress(pointerId, activePointers);
+    }
+  }
 }
 
 function supportsPointerEvents(): boolean {
@@ -726,9 +846,10 @@ function wireStateSlotControls(root: HTMLElement): void {
 function startControlPress(
   pointerId: string,
   action: ControlAction,
-  activePointers: Map<string, ActivePointer>
+  activePointers: Map<string, ActivePointer>,
+  sourceActionElement: HTMLElement
 ): void {
-  updateControlPresses(pointerId, [action], activePointers);
+  updateControlPresses(pointerId, [action], activePointers, undefined, sourceActionElement);
 }
 
 function updateDpadPress(
@@ -751,7 +872,8 @@ function updateControlPresses(
   pointerId: string,
   actions: ControlAction[],
   activePointers: Map<string, ActivePointer>,
-  sourceStick?: HTMLElement
+  sourceStick?: HTMLElement,
+  sourceActionElement?: HTMLElement
 ): void {
   let activePointer = activePointers.get(pointerId);
   if (!activePointer) {
@@ -759,6 +881,7 @@ function updateControlPresses(
     activePointer = {
       currentActions: [],
       pressed: true,
+      sourceActionElement,
       sourceStick
     };
     activePointers.set(pointerId, activePointer);
@@ -782,6 +905,7 @@ function updateControlPresses(
   }
 
   activePointer.currentActions = nextActions;
+  activePointer.sourceActionElement = sourceActionElement ?? activePointer.sourceActionElement;
   activePointer.sourceStick = sourceStick ?? activePointer.sourceStick;
   updateStickActiveDirections(activePointer.sourceStick, activePointers);
 }
@@ -800,6 +924,12 @@ function endControlPress(pointerId: string, activePointers: Map<string, ActivePo
   }
   activePointers.delete(pointerId);
   updateStickActiveDirections(activePointer.sourceStick, activePointers);
+}
+
+function releaseAllControlPresses(activePointers: Map<string, ActivePointer>): void {
+  for (const pointerId of [...activePointers.keys()]) {
+    endControlPress(pointerId, activePointers);
+  }
 }
 
 function readDpadMode(stick: HTMLElement): DpadMode {
@@ -1385,6 +1515,7 @@ async function loadManualStateSlot(): Promise<boolean> {
 
   const game = state.game;
   manualStateInFlight = true;
+  releaseCurrentControlPointers?.();
   input.releaseAll();
   setStateSlotButtonsDisabled(true);
   setGameStatus("불러오는 중");
@@ -1470,6 +1601,7 @@ function releaseWakeLock(): void {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     void saveActiveAutosave();
+    releaseCurrentControlPointers?.();
     input.releaseAll();
   }
 });
@@ -1488,7 +1620,10 @@ function createRuntimePageLifecycleContext(): RuntimePageLifecycleContext {
     isGameActive: () => state.name === "game",
     isRuntimePlayable: () => runtimeControlsEnabled,
     pauseEmulator: () => nativeEmulator.pause(),
-    releaseAllInputs: () => input.releaseAll(),
+    releaseAllInputs: () => {
+      releaseCurrentControlPointers?.();
+      input.releaseAll();
+    },
     releaseWakeLock,
     requestWakeLock: () => {
       void requestWakeLock();

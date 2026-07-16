@@ -751,15 +751,19 @@ p {
 }
 
 .virtual-game-buttons {
-  --button-size: clamp(48px, 12.5vw, 60px);
-  position: relative;
-  flex: 0 0 clamp(154px, 43vw, 198px);
-  width: clamp(154px, 43vw, 198px);
-  height: clamp(132px, 21dvh, 176px);
+  --button-gap: clamp(8px, 2.2vw, 12px);
+  --button-size: clamp(44px, 11.75vw, 54px);
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(3, var(--button-size));
+  grid-template-rows: repeat(2, var(--button-size));
+  gap: var(--button-gap);
+  width: max-content;
+  height: max-content;
 }
 
 .virtual-game-button {
-  position: absolute;
+  position: relative;
   display: grid;
   place-items: center;
   width: var(--button-size);
@@ -782,36 +786,6 @@ p {
     filter 0.12s ease,
     opacity 0.12s ease,
     transform 0.08s ease;
-}
-
-.virtual-game-button:nth-child(1) {
-  top: 50%;
-  left: 0;
-}
-
-.virtual-game-button:nth-child(2) {
-  top: 34%;
-  left: 18%;
-}
-
-.virtual-game-button:nth-child(3) {
-  top: 18%;
-  left: 36%;
-}
-
-.virtual-game-button:nth-child(4) {
-  right: 36%;
-  top: 50%;
-}
-
-.virtual-game-button:nth-child(5) {
-  right: 18%;
-  top: 34%;
-}
-
-.virtual-game-button:nth-child(6) {
-  top: 18%;
-  right: 0;
 }
 
 .virtual-game-button.tone-primary {

@@ -531,6 +531,7 @@ async function verifyGame(target, game) {
     await assertSimultaneousMappedInput(page, target, game);
     await assertCancelledMappedInput(page, target, game);
     await assertDiagonalDpadInput(page, target, game);
+    await assertMobileInputStress(page, target, game);
     if (game.verifyRomCacheReuse) {
       await assertRomCacheReuse(page, target, game, expectedRomUrl, romNetworkRequests);
     }
@@ -762,6 +763,18 @@ async function assertMobileControllerLayout(page, target, game) {
         y: rect.top + rect.height / 2
       };
     });
+    const buttonMinGap = buttonRects.length > 1
+      ? Math.min(...buttonRects.flatMap((rect, index) => (
+          buttonRects.slice(index + 1).map((other) => {
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const otherCenterX = other.left + other.width / 2;
+            const otherCenterY = other.top + other.height / 2;
+            return Math.hypot(centerX - otherCenterX, centerY - otherCenterY) -
+              (rect.width + other.width) / 2;
+          })
+        )))
+      : 0;
     const buttonVerticalSpan = buttonCenters.length > 0
       ? Math.max(...buttonCenters.map((button) => button.y)) - Math.min(...buttonCenters.map((button) => button.y))
       : 0;
@@ -807,6 +820,7 @@ async function assertMobileControllerLayout(page, target, game) {
       activeHitFailures: hitFailures,
       buttonCount: buttons.length,
       buttonCenters,
+      buttonMinGap,
       buttonVerticalSpanRatio: stickRect ? buttonVerticalSpan / stickRect.height : 1,
       buttonsVisible: buttons.every(isVisible),
       controlsRect,
@@ -907,6 +921,9 @@ async function assertMobileControllerLayout(page, target, game) {
   }
   if (layout.buttonVerticalSpanRatio > 0.45) {
     throw new Error(`${target.label} ${game.id} action buttons are too steep for short thumb travel: ${JSON.stringify(layout)}`);
+  }
+  if (layout.buttonMinGap < 6) {
+    throw new Error(`${target.label} ${game.id} action buttons are too close together: ${JSON.stringify(layout)}`);
   }
   if (layout.dpadCenterRatio > 0.18) {
     throw new Error(`${target.label} ${game.id} D-pad center circle is too large for sensitive sectors: ${JSON.stringify(layout)}`);
@@ -1040,19 +1057,21 @@ function assertUniversalControllerGeometry(layout, label) {
   const buttons = layout.buttonCenters;
   if (
     buttons.length !== 6 ||
-    !isRisingDiagonal(buttons.slice(0, 3)) ||
-    !isRisingDiagonal(buttons.slice(3, 6))
+    !areSeparatedButtonRows(buttons.slice(0, 3), buttons.slice(3, 6))
   ) {
-    throw new Error(`${label} action buttons are not arranged in two rising diagonals: ${JSON.stringify(layout)}`);
+    throw new Error(`${label} action buttons are not arranged in two separated arcade rows: ${JSON.stringify(layout)}`);
   }
 }
 
-function isRisingDiagonal(buttons) {
-  return buttons.length === 3 &&
+function areSeparatedButtonRows(topRow, bottomRow) {
+  const isRow = (buttons) => buttons.length === 3 &&
     buttons[0].x < buttons[1].x &&
     buttons[1].x < buttons[2].x &&
-    buttons[0].y > buttons[1].y &&
-    buttons[1].y > buttons[2].y;
+    Math.max(...buttons.map((button) => button.y)) - Math.min(...buttons.map((button) => button.y)) <= 1;
+
+  return isRow(topRow) &&
+    isRow(bottomRow) &&
+    Math.max(...topRow.map((button) => button.y)) < Math.min(...bottomRow.map((button) => button.y));
 }
 
 async function assertControlFeedback(page, selector, label) {
@@ -1245,6 +1264,246 @@ async function assertCancelledMappedInput(page, target, game) {
   assertInputPair(calls, actionCheck.expectedInput, `${target.label} ${game.id} cancelled ${actionCheck.label}`);
 }
 
+async function assertMobileInputStress(page, target, game) {
+  if (target.inputMode !== "pointer" || !["bublbobl", "s1945"].includes(game.id)) {
+    return;
+  }
+
+  const fireCheck = game.inputChecks.find((check) => check.expectedInput === 0);
+  const jumpCheck = game.inputChecks.find((check) => check.expectedInput === 8);
+  const fireBox = fireCheck ? await page.locator(fireCheck.selector).first().boundingBox() : null;
+  const jumpBox = jumpCheck ? await page.locator(jumpCheck.selector).first().boundingBox() : null;
+  const stickBox = await page.locator(".virtual-stick").boundingBox();
+  if (!fireCheck || !jumpCheck || !fireBox || !jumpBox || !stickBox) {
+    throw new Error(`${target.label} ${game.id} missing controls for mobile input stress`);
+  }
+
+  const firePoint = centerPoint(fireBox);
+  const jumpPoint = centerPoint(jumpBox);
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await page.mouse.move(firePoint.x, firePoint.y);
+  await page.mouse.down();
+  await page.mouse.move(jumpPoint.x, jumpPoint.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const scrubCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertOrderedInputTransition(
+    scrubCalls,
+    fireCheck.expectedInput,
+    jumpCheck.expectedInput,
+    `${target.label} ${game.id} action scrub`
+  );
+
+  const okBox = await page.locator(
+    '[data-touch-surface="virtual"] .virtual-special-button[data-action="ok"]'
+  ).boundingBox();
+  if (!okBox) {
+    throw new Error(`${target.label} ${game.id} missing OK control for scrub containment`);
+  }
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  const okPoint = centerPoint(okBox);
+  await page.mouse.move(firePoint.x, firePoint.y);
+  await page.mouse.down();
+  await page.mouse.move(okPoint.x, okPoint.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const containedScrubCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertInputPair(
+    containedScrubCalls,
+    fireCheck.expectedInput,
+    `${target.label} ${game.id} gameplay scrub containment`
+  );
+  assertForbiddenInputs(
+    containedScrubCalls,
+    [6, 7],
+    `${target.label} ${game.id} gameplay scrub containment`
+  );
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  const stickCenter = centerPoint(stickBox);
+  const scrubRadius = Math.min(stickBox.width, stickBox.height) * 0.34;
+  await dispatchTouchStart(page, stickCenter.x - scrubRadius, stickCenter.y, 1951);
+  for (let index = 0; index < 96; index += 1) {
+    const angle = (index / 16) * Math.PI * 2;
+    await dispatchTouchMove(
+      page,
+      stickCenter.x + Math.cos(angle) * scrubRadius,
+      stickCenter.y + Math.sin(angle) * scrubRadius,
+      1951
+    );
+  }
+  await page.waitForTimeout(1_400);
+  await dispatchTouchEnd(page, stickCenter.x, stickCenter.y, 1951);
+  await page.waitForTimeout(300);
+  const dpadState = await page.evaluate(() => ({
+    activeDirections: document.querySelector(".virtual-stick")?.getAttribute("data-active-directions") ?? "",
+    calls: window.__gameSmokeInputCalls ?? []
+  }));
+  for (const [input, label] of [[4, "up"], [7, "right"], [5, "down"], [6, "left"]]) {
+    assertInputPair(dpadState.calls, input, `${target.label} ${game.id} long scrub ${label}`);
+  }
+  assertBalancedInputs(dpadState.calls, [4, 5, 6, 7], `${target.label} ${game.id} long D-pad scrub`);
+  if (dpadState.activeDirections !== "") {
+    throw new Error(`${target.label} ${game.id} D-pad stayed visually active after scrub: ${JSON.stringify(dpadState)}`);
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1952);
+  await dispatchLostPointerCapture(page, 1952);
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1952);
+  await dispatchTouchEnd(page, firePoint.x, firePoint.y, 1952);
+  await page.waitForTimeout(120);
+  const lostCaptureCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    lostCaptureCalls,
+    fireCheck.expectedInput,
+    2,
+    `${target.label} ${game.id} lost capture recovery`
+  );
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1953);
+  await dispatchPointerEndOutside(page, 1953);
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1953);
+  await dispatchTouchEnd(page, firePoint.x, firePoint.y, 1953);
+  await page.waitForTimeout(120);
+  const outsideReleaseCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    outsideReleaseCalls,
+    fireCheck.expectedInput,
+    2,
+    `${target.label} ${game.id} document release recovery`
+  );
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  const leftPoint = {
+    x: stickBox.x + stickBox.width * 0.2,
+    y: stickBox.y + stickBox.height / 2
+  };
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1955);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("blur"));
+    delete window.__gameSmokeActivePointerTargets[1955];
+  });
+  const blurActiveDirections = await page.locator(".virtual-stick").getAttribute("data-active-directions");
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1955);
+  await dispatchTouchEnd(page, leftPoint.x, leftPoint.y, 1955);
+  await page.waitForTimeout(120);
+  const blurRecoveryCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    blurRecoveryCalls,
+    6,
+    2,
+    `${target.label} ${game.id} blur recovery`
+  );
+  if (blurActiveDirections !== "") {
+    throw new Error(`${target.label} ${game.id} D-pad stayed active after blur: ${blurActiveDirections}`);
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1958);
+  const loadBox = await page.locator(
+    '[data-touch-surface="virtual"] [data-load-state]'
+  ).boundingBox();
+  if (!loadBox) {
+    throw new Error(`${target.label} ${game.id} missing load control for pointer cleanup`);
+  }
+  const loadPoint = centerPoint(loadBox);
+  await page.mouse.click(loadPoint.x, loadPoint.y);
+  await page.waitForTimeout(160);
+  const loadActiveDirections = await page.locator(".virtual-stick").getAttribute("data-active-directions");
+  await dispatchTouchEnd(page, leftPoint.x, leftPoint.y, 1958);
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1959);
+  await dispatchTouchEnd(page, leftPoint.x, leftPoint.y, 1959);
+  await page.waitForTimeout(120);
+  const loadRecoveryCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    loadRecoveryCalls,
+    6,
+    2,
+    `${target.label} ${game.id} load-state pointer cleanup`
+  );
+  if (loadActiveDirections !== "") {
+    throw new Error(`${target.label} ${game.id} D-pad stayed active after loading state: ${loadActiveDirections}`);
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1960);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    delete document.hidden;
+    delete window.__gameSmokeActivePointerTargets[1960];
+  });
+  const visibilityActiveDirections = await page.locator(".virtual-stick").getAttribute("data-active-directions");
+  await dispatchTouchStart(page, leftPoint.x, leftPoint.y, 1961);
+  await dispatchTouchEnd(page, leftPoint.x, leftPoint.y, 1961);
+  await page.waitForTimeout(120);
+  const visibilityRecoveryCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    visibilityRecoveryCalls,
+    6,
+    2,
+    `${target.label} ${game.id} visibility recovery with fresh pointer`
+  );
+  if (visibilityActiveDirections !== "") {
+    throw new Error(`${target.label} ${game.id} D-pad stayed active after visibility cleanup: ${visibilityActiveDirections}`);
+  }
+
+  await page.evaluate(() => {
+    window.__gameSmokeInputCalls = [];
+  });
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1956);
+  await dispatchTouchStart(page, firePoint.x, firePoint.y, 1957);
+  await dispatchTouchEnd(page, firePoint.x, firePoint.y, 1956);
+  const sharedActionMidCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  if (sharedActionMidCalls.some((call) => call.input === fireCheck.expectedInput && call.pressed === 0)) {
+    throw new Error(`${target.label} ${game.id} released a shared action while another pointer held it: ${JSON.stringify(sharedActionMidCalls)}`);
+  }
+  await dispatchTouchEnd(page, firePoint.x, firePoint.y, 1957);
+  await page.waitForTimeout(120);
+  const sharedActionCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    sharedActionCalls,
+    fireCheck.expectedInput,
+    1,
+    `${target.label} ${game.id} shared action pointer ownership`
+  );
+
+  await page.evaluate(({ x, y }) => {
+    window.__gameSmokeInputCalls = [];
+    for (let index = 0; index < 30; index += 1) {
+      window.__gameSmokeDispatchPointer("pointerdown", x, y, 1954, true);
+      window.__gameSmokeDispatchPointer("pointerup", x, y, 1954, false);
+    }
+  }, firePoint);
+  await page.waitForTimeout(120);
+  const rapidTapCalls = await page.evaluate(() => window.__gameSmokeInputCalls ?? []);
+  assertExactInputPairs(
+    rapidTapCalls,
+    fireCheck.expectedInput,
+    30,
+    `${target.label} ${game.id} rapid repeated taps`
+  );
+}
+
 async function dispatchTouchStart(page, x, y, pointerId = 1945) {
   await page.evaluate(({ pointerId, x, y }) => {
     if (typeof PointerEvent === "function") {
@@ -1267,6 +1526,53 @@ async function dispatchTouchEnd(page, x, y, pointerId = 1945) {
     window.__gameSmokeDispatchTouch("touchend", x, y, false);
     window.__gameSmokeActiveTouchTarget = null;
   }, { pointerId, x, y });
+}
+
+async function dispatchTouchMove(page, x, y, pointerId = 1945) {
+  await page.evaluate(({ pointerId, x, y }) => {
+    if (typeof PointerEvent === "function") {
+      window.__gameSmokeDispatchPointer("pointermove", x, y, pointerId, true);
+      return;
+    }
+
+    window.__gameSmokeDispatchTouch("touchmove", x, y, true);
+  }, { pointerId, x, y });
+}
+
+async function dispatchLostPointerCapture(page, pointerId) {
+  await page.evaluate((pointerId) => {
+    const target = window.__gameSmokeActivePointerTargets[pointerId];
+    if (!target) {
+      throw new Error(`No active pointer target for lost capture ${pointerId}`);
+    }
+    delete window.__gameSmokeActivePointerTargets[pointerId];
+    target.dispatchEvent(new PointerEvent("lostpointercapture", {
+      bubbles: true,
+      button: 0,
+      buttons: 0,
+      cancelable: false,
+      composed: true,
+      pointerId,
+      pointerType: "touch"
+    }));
+  }, pointerId);
+}
+
+async function dispatchPointerEndOutside(page, pointerId) {
+  await page.evaluate((pointerId) => {
+    delete window.__gameSmokeActivePointerTargets[pointerId];
+    document.body.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      button: 0,
+      buttons: 0,
+      cancelable: true,
+      clientX: 1,
+      clientY: 1,
+      composed: true,
+      pointerId,
+      pointerType: "touch"
+    }));
+  }, pointerId);
 }
 
 async function dispatchTouchCancel(page, x, y, pointerId = 1945) {
@@ -1293,6 +1599,42 @@ function assertInputPair(calls, input, label) {
   const released = calls.some((call) => call.input === input && call.pressed === 0);
   if (!pressed || !released) {
     throw new Error(`${label} control did not send input ${input}: ${JSON.stringify(calls)}`);
+  }
+}
+
+function assertOrderedInputTransition(calls, fromInput, toInput, label) {
+  const fromPress = calls.findIndex((call) => call.input === fromInput && call.pressed === 1);
+  const fromRelease = calls.findIndex((call) => call.input === fromInput && call.pressed === 0);
+  const toPress = calls.findIndex((call) => call.input === toInput && call.pressed === 1);
+  const toRelease = calls.findIndex((call) => call.input === toInput && call.pressed === 0);
+  if (
+    fromPress === -1 ||
+    fromRelease === -1 ||
+    toPress === -1 ||
+    toRelease === -1 ||
+    fromPress > fromRelease ||
+    fromRelease > toPress ||
+    toPress > toRelease
+  ) {
+    throw new Error(`${label} did not release the old action before pressing the new one: ${JSON.stringify(calls)}`);
+  }
+}
+
+function assertBalancedInputs(calls, inputs, label) {
+  for (const input of inputs) {
+    const presses = calls.filter((call) => call.input === input && call.pressed === 1).length;
+    const releases = calls.filter((call) => call.input === input && call.pressed === 0).length;
+    if (presses === 0 || presses !== releases) {
+      throw new Error(`${label} left input ${input} unbalanced: ${JSON.stringify(calls)}`);
+    }
+  }
+}
+
+function assertExactInputPairs(calls, input, expectedPairs, label) {
+  const presses = calls.filter((call) => call.input === input && call.pressed === 1).length;
+  const releases = calls.filter((call) => call.input === input && call.pressed === 0).length;
+  if (presses !== expectedPairs || releases !== expectedPairs) {
+    throw new Error(`${label} expected ${expectedPairs} balanced pairs for input ${input}: ${JSON.stringify(calls)}`);
   }
 }
 

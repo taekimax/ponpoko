@@ -32,7 +32,7 @@ Rejected as out of scope: changing asynchronous OK/startup sequences. The report
 | I2 | P2 natural scrub input | codex | done | Keep stick ownership while continuously updating its vector; allow action scrub only among gameplay-button peers | Four-way Bubble Bobble and vertical/eight-way S1945 stress passed |
 | I3 | P3 action-button spacing | codex | done | Replace the overlapping diagonals with a 3 x 2 grid using 44 px minimum targets and measurable gaps | 375 x 667 geometry assertion passed with at least 6 px edge gap |
 | I4 | P4 installed-client refresh | codex | done | Bump the service-worker cache generation | Production build passed with `2026-07-16-input-scrub-v1` |
-| I5 | P5 regression and release closure | codex + evaluator | in_progress | Full gates, evaluator GO, commit, push main, Pages/live verification, cleanup | Local gates and evaluator GO complete; release closure pending |
+| I5 | P5 regression and release closure | codex + evaluator | done | Full gates, evaluator GO, commit, push main, Pages/live verification, cleanup | Commit `f729681`; Pages run `29482659257`; live smokes and cleanup passed |
 
 ## Baseline
 
@@ -53,6 +53,9 @@ Rejected as out of scope: changing asynchronous OK/startup sequences. The report
 - `BROWSER_SMOKE_THROW_POINTER_CAPTURE=1 node scripts/browser-smoke.mjs` -> passed, proving the document fallback works when `setPointerCapture()` throws. An initial unrelated startup-ack timing miss passed on immediate rerun.
 - `npm run browser:smoke` -> passed: Ponpoko WebKit flow, all catalog games on desktop Chromium and mobile WebKit, mapped inputs, runtime frames, ROM cache reuse, and preparation-failure recovery.
 - 375 x 667 screenshot inspection -> D-pad and 3 x 2 action cluster remain inside the viewport; targets are separated and the menu stays outside the controller area.
+- GitHub Pages run [29482659257](https://github.com/taekimax/ponpoko/actions/runs/29482659257) -> build and deploy jobs passed for implementation commit `f729681048e4138f34df875173bc7e332a870d7a`.
+- Live readback at <https://taekimax.github.io/ponpoko/> -> service worker `2026-07-16-input-scrub-v1`, JavaScript `index-Brv9DG5-.js`, and CSS `index-Eo5gkbmo.css` served.
+- Live `browser-smoke.mjs` and focused Bubble Bobble mobile runtime stress -> passed against GitHub Pages.
 
 ## Evaluator Review
 
@@ -68,8 +71,8 @@ No tracked tests, documentation, configuration, ROM, or source files will be del
 
 `CP1 | I1-I4 | codex | done | delegated broker, lifecycle cleanup, bounded gameplay scrub, 44 px 3 x 2 controls, cache generation update | local and focused browser gates green`
 
-`CP2 | I5 | evaluator + codex | in_progress | evaluator GO; full browser/runtime suite green | commit, push main, Pages/live verification, cleanup`
+`CP2 | I5 | evaluator + codex | done | evaluator GO; full browser/runtime suite green; commit f729681 pushed; Pages and live smokes green; dedicated worktree/temp artifacts removed | closed`
 
 ## Closure
 
-Pending.
+Implementation commit `f729681048e4138f34df875173bc7e332a870d7a` was fast-forwarded to `main` and pushed. Pages deployment and public-site mobile input verification passed. The local preview server, generated `dist`/dependency/cache files, temporary OSS checkout, screenshots, live-readback files, dedicated `/Volumes/dev/ponpoko-worktrees/input-scrub` worktree, and local feature branch were removed. The pre-existing untracked `/Volumes/dev/ponpoko/docs/plans/` directory was preserved untouched.

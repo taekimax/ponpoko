@@ -7,7 +7,13 @@ const configuredBaseUrl = process.env.GAME_RUNTIME_SMOKE_BASE_URL;
 const baseUrl = configuredBaseUrl
   ? ensureTrailingSlash(configuredBaseUrl)
   : `http://127.0.0.1:${port}/ponpoko/`;
-const appUrl = new URL("?bootDebug=1", baseUrl).href;
+const captureSpikeEnabled = ["1", "true"].includes(process.env.GAME_RUNTIME_SMOKE_CAPTURE ?? "");
+const captureLanEnabled = ["1", "true"].includes(process.env.GAME_RUNTIME_SMOKE_CAPTURE_LAN ?? "");
+const appSearch = new URLSearchParams({ bootDebug: "1" });
+if (captureSpikeEnabled) {
+  appSearch.set("captureSpike", "1");
+}
+const appUrl = new URL(`?${appSearch}`, baseUrl).href;
 const expectedRomBaseUrl = new URL("roms/", baseUrl).href;
 const requestedGameId = process.env.GAME_RUNTIME_SMOKE_GAME;
 const requestedTargetLabel = process.env.GAME_RUNTIME_SMOKE_TARGET;
@@ -182,6 +188,12 @@ const games = [
 if (requestedGameId && games.length === 0) {
   throw new Error(`Unknown GAME_RUNTIME_SMOKE_GAME ${requestedGameId}`);
 }
+if (captureSpikeEnabled && requestedGameId !== "bublbobl") {
+  throw new Error("GAME_RUNTIME_SMOKE_CAPTURE requires GAME_RUNTIME_SMOKE_GAME=bublbobl");
+}
+if (captureLanEnabled && (!captureSpikeEnabled || requestedGameId !== "bublbobl")) {
+  throw new Error("GAME_RUNTIME_SMOKE_CAPTURE_LAN requires GAME_RUNTIME_SMOKE_CAPTURE=1 and GAME_RUNTIME_SMOKE_GAME=bublbobl");
+}
 
 const server = configuredBaseUrl
   ? null
@@ -230,7 +242,11 @@ try {
     }
     for (const target of targets) {
       for (const game of games) {
-        await verifyGame(target, game);
+        if (captureLanEnabled) {
+          await verifyLanCapture(target, game);
+        } else {
+          await verifyGame(target, game);
+        }
       }
     }
   } finally {
@@ -240,6 +256,222 @@ try {
   console.log("game runtime smoke ok: catalog games boot on desktop/mobile, render frames, and accept mapped inputs");
 } finally {
   server?.kill("SIGTERM");
+}
+
+async function verifyLanCapture(target, game) {
+  const context = await target.browser.newContext(target.contextOptions);
+  const host = await context.newPage();
+  const guest = await context.newPage();
+  const hostUrl = new URL("?captureSpike=1&captureRole=host", baseUrl).href;
+  const guestUrl = new URL("?captureSpike=1&captureRole=guest", baseUrl).href;
+  const guestRequests = [];
+  guest.on("request", (request) => guestRequests.push(request.url()));
+
+  try {
+    await Promise.all([host, guest].map((page) => page.addInitScript(() => {
+      window.__gameSmokeGetUserMediaCalls = 0;
+      const originalGetUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+      if (navigator.mediaDevices && originalGetUserMedia) {
+        navigator.mediaDevices.getUserMedia = (...args) => {
+          window.__gameSmokeGetUserMediaCalls += 1;
+          return originalGetUserMedia(...args);
+        };
+      }
+    })));
+
+    await guest.goto(guestUrl, { waitUntil: "networkidle" });
+    const join = guest.getByRole("button", { name: "참가하고 소리 켜기", exact: true });
+    await join.waitFor({ timeout: 5_000 });
+    await join.click();
+    await guest.waitForFunction(() => window.__ponpokoReadW2Lan?.().status === "waiting", undefined, {
+      timeout: 5_000
+    });
+
+    const guestBootBoundary = await readGuestIsolationEvidence(guest, guestRequests);
+    if (!guestIsolationIsClean(guestBootBoundary)) {
+      throw new Error(`${target.label} ${game.id} guest boot boundary failed: ${JSON.stringify({
+        boundary: guestBootBoundary
+      })}`);
+    }
+
+    await host.goto(hostUrl, { waitUntil: "networkidle" });
+    const intro = host.getByRole("button", { name: "확인하고 시작" });
+    if (await intro.count()) {
+      await intro.click();
+    }
+    await host.locator(`[data-game-id="${game.id}"]`).click();
+    await host.locator(".game-topbar strong").getByText(game.title).waitFor({ timeout: 5_000 });
+    await host.locator("canvas").first().waitFor({ timeout: 90_000 });
+    await host.waitForFunction((minFrame) => (
+      (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= minFrame
+    ), game.minFrame, { timeout: 60_000 });
+    await host.locator("[data-game-status]").getByText("플레이 중").waitFor({ timeout: 10_000 });
+
+    const fallback = host.getByRole("button", { name: "방 열고 소리 켜기", exact: true });
+    await host.waitForFunction(() => {
+      const snapshot = window.__ponpokoReadW2Lan?.();
+      return snapshot?.status === "waiting" || snapshot?.fallbackAvailable === true || snapshot?.status === "failed";
+    }, undefined, { timeout: 10_000 });
+    if (await fallback.isVisible().catch(() => false)) {
+      await fallback.click();
+    }
+
+    await host.keyboard.down("5");
+    await host.waitForTimeout(250);
+    await host.keyboard.up("5");
+    await host.keyboard.down("Enter");
+    await host.waitForTimeout(250);
+    await host.keyboard.up("Enter");
+    const fire = game.inputChecks.find((check) => check.expectedInput === 0);
+    if (fire) {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await host.keyboard.down(fire.keyboard);
+        await host.waitForTimeout(120);
+        await host.keyboard.up(fire.keyboard);
+        await host.waitForTimeout(130);
+      }
+    }
+
+    const allowHeadlessStatsAudio = target.label === "desktop Chromium";
+    try {
+      await guest.waitForFunction((allowStatsOnly) => {
+        const snapshot = window.__ponpokoReadW2Lan?.();
+        if (!snapshot || snapshot.error) {
+          return false;
+        }
+        if (snapshot.ready === true && snapshot.status === "ready") {
+          return true;
+        }
+        return allowStatsOnly &&
+          snapshot.receivedVideoTrackCount === 1 &&
+          snapshot.receivedAudioTrackCount === 1 &&
+          snapshot.inboundVideoFramesDecoded > 0 &&
+          snapshot.inboundAudioPacketsReceived > 0 &&
+          snapshot.previewAdvancing &&
+          snapshot.previewContentVisible &&
+          snapshot.previewContentChanging;
+      }, allowHeadlessStatsAudio, { timeout: 25_000 });
+    } catch (error) {
+      throw new Error(`${target.label} ${game.id} LAN guest did not receive live media: ${JSON.stringify(await readLanDiagnostic(host, guest))}`, {
+        cause: error
+      });
+    }
+
+    const firstGuestMedia = await guest.evaluate(() => {
+      const snapshot = window.__ponpokoReadW2Lan?.();
+      return {
+        frames: snapshot?.inboundVideoFramesDecoded ?? 0,
+        packets: snapshot?.inboundAudioPacketsReceived ?? 0
+      };
+    });
+    await guest.waitForFunction(({ frames, packets, strictReady }) => {
+      const snapshot = window.__ponpokoReadW2Lan?.();
+      return snapshot?.error === null &&
+        snapshot.inboundVideoFramesDecoded > frames &&
+        snapshot.inboundAudioPacketsReceived > packets &&
+        (!strictReady || snapshot.ready === true);
+    }, { ...firstGuestMedia, strictReady: !allowHeadlessStatsAudio }, { timeout: 10_000 });
+
+    const guestVisual = await captureLanGuestPreviewVisualEvidence(guest, target, game);
+    const evidence = await Promise.all([host, guest].map((page) => page.evaluate(() => ({
+      canvasCount: document.querySelectorAll("canvas").length,
+      getUserMediaCalls: window.__gameSmokeGetUserMediaCalls,
+      hasPreview: Boolean(document.querySelector(".w2-lan-capture-panel video")),
+      snapshot: window.__ponpokoReadW2Lan?.() ?? null
+    }))));
+    const [hostEvidence, guestEvidence] = evidence;
+    const guestSessionBoundary = await readGuestIsolationEvidence(guest, guestRequests);
+    const strictReceiverReady = !allowHeadlessStatsAudio;
+    if (
+      hostEvidence.getUserMediaCalls !== 0 ||
+      hostEvidence.hasPreview ||
+      hostEvidence.snapshot?.captureVideoTrackCount !== 1 ||
+      hostEvidence.snapshot?.captureAudioTrackCount !== 1 ||
+      (allowHeadlessStatsAudio && hostEvidence.snapshot?.captureAudioActivityObserved !== true) ||
+      guestEvidence.getUserMediaCalls !== 0 ||
+      guestEvidence.canvasCount !== 0 ||
+      !guestEvidence.hasPreview ||
+      guestEvidence.snapshot?.receivedVideoTrackCount !== 1 ||
+      guestEvidence.snapshot?.receivedAudioTrackCount !== 1 ||
+      guestEvidence.snapshot?.error !== null ||
+      (strictReceiverReady && guestEvidence.snapshot?.ready !== true) ||
+      !guestIsolationIsClean(guestSessionBoundary)
+    ) {
+      throw new Error(`${target.label} ${game.id} LAN role/media boundary failed: ${JSON.stringify({
+        guest: guestEvidence,
+        guestSessionBoundary,
+        guestVisual,
+        host: hostEvidence
+      })}`);
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+async function readGuestIsolationEvidence(page, requests) {
+  const pageState = await page.evaluate(() => ({
+    canvasCount: document.querySelectorAll("canvas").length,
+    ejsGlobals: Object.keys(window).filter((key) => key.startsWith("EJS_")),
+    getUserMediaCalls: window.__gameSmokeGetUserMediaCalls,
+    hasCatalog: Boolean(document.querySelector("[data-game-id]")),
+    hasGameRuntimeMount: Boolean(document.querySelector("#game")),
+    hasLoader: Boolean(document.querySelector('script[src*="loader"]')),
+    snapshot: window.__ponpokoReadW2Lan?.() ?? null
+  }));
+  const forbiddenRequests = requests.filter((url) => {
+    const parsed = new URL(url);
+    return /\/roms\/|\/data\/loader\.js(?:$|\?)|\/(?:cores?|emulatorjs)\/|\.(?:state|wasm|zip)(?:$|\?)/i.test(parsed.href);
+  });
+  return { ...pageState, forbiddenRequests };
+}
+
+function guestIsolationIsClean(evidence) {
+  return evidence.canvasCount === 0 &&
+    evidence.ejsGlobals.length === 0 &&
+    evidence.getUserMediaCalls === 0 &&
+    !evidence.hasCatalog &&
+    !evidence.hasGameRuntimeMount &&
+    !evidence.hasLoader &&
+    evidence.forbiddenRequests.length === 0;
+}
+
+async function captureLanGuestPreviewVisualEvidence(page, target, game) {
+  const preview = page.locator('video[aria-label="Phone A 게임 수신 영상"]');
+  const fullRegion = { xEnd: 1, xStart: 0, yEnd: 1, yStart: 0 };
+  let previous = await preview.screenshot();
+  let bestChangedPixelRatio = 0;
+  let bestVisiblePixelRatio = visiblePixelRatio(previous, fullRegion);
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    await page.waitForTimeout(250);
+    const current = await preview.screenshot();
+    const changedPixelRatio = pixelDifferenceRatio(previous, current);
+    const currentVisiblePixelRatio = visiblePixelRatio(current, fullRegion);
+    bestChangedPixelRatio = Math.max(bestChangedPixelRatio, changedPixelRatio);
+    bestVisiblePixelRatio = Math.max(bestVisiblePixelRatio, currentVisiblePixelRatio);
+    if (currentVisiblePixelRatio >= 0.02 && changedPixelRatio >= 0.01) {
+      return { changedPixelRatio, visiblePixelRatio: currentVisiblePixelRatio };
+    }
+    previous = current;
+  }
+  const diagnostic = await page.evaluate(() => ({
+    panel: document.querySelector("[data-w2-lan-guest-mount]")?.textContent ?? null,
+    snapshot: window.__ponpokoReadW2Lan?.() ?? null
+  }));
+  throw new Error(`${target.label} ${game.id} LAN guest preview stayed black or static: ${JSON.stringify({
+    bestChangedPixelRatio,
+    bestVisiblePixelRatio,
+    ...diagnostic
+  })}`);
+}
+
+async function readLanDiagnostic(host, guest) {
+  const read = (page) => page.evaluate(() => ({
+    panel: document.querySelector("[data-stream-capture-spike-mount], [data-w2-lan-guest-mount]")?.textContent ?? null,
+    snapshot: window.__ponpokoReadW2Lan?.() ?? null
+  }));
+  const [hostDiagnostic, guestDiagnostic] = await Promise.all([read(host), read(guest)]);
+  return { guest: guestDiagnostic, host: hostDiagnostic };
 }
 
 async function verifyGame(target, game) {
@@ -262,7 +494,15 @@ async function verifyGame(target, game) {
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
       window.__gameSmokeFetchCalls = [];
+      window.__gameSmokeGetUserMediaCalls = 0;
       window.__gameSmokeInputCalls = [];
+      const originalGetUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+      if (navigator.mediaDevices && originalGetUserMedia) {
+        navigator.mediaDevices.getUserMedia = (...args) => {
+          window.__gameSmokeGetUserMediaCalls += 1;
+          return originalGetUserMedia(...args);
+        };
+      }
       window.fetch = async (input, init) => {
         const url = input instanceof Request ? input.url : new URL(String(input), window.location.href).href;
         const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
@@ -370,6 +610,23 @@ async function verifyGame(target, game) {
       return (window.EJS_emulator?.gameManager?.getFrameNum?.() ?? 0) >= minFrame;
     }, game.minFrame, { timeout: 60_000 });
     await page.locator("[data-game-status]").getByText("플레이 중").waitFor({ timeout: 10_000 });
+    if (captureSpikeEnabled) {
+      await assertStreamCaptureSpike(page, target, game);
+      return;
+    } else if (game.id === "bublbobl") {
+      const captureBoundary = await page.evaluate(() => ({
+        getUserMediaCalls: window.__gameSmokeGetUserMediaCalls,
+        hasDebugReader: typeof window.__ponpokoReadCaptureSpike === "function",
+        hasPanel: Boolean(document.querySelector("[data-stream-capture-spike-mount]"))
+      }));
+      if (
+        captureBoundary.getUserMediaCalls !== 0 ||
+        captureBoundary.hasDebugReader ||
+        captureBoundary.hasPanel
+      ) {
+        throw new Error(`${target.label} ${game.id} query-off capture boundary changed: ${JSON.stringify(captureBoundary)}`);
+      }
+    }
     if (game.advanceTutorial) {
       await advanceMetalSlugTutorial(page, target, game);
     }
@@ -538,6 +795,290 @@ async function verifyGame(target, game) {
   } finally {
     await context.close();
   }
+}
+
+async function assertStreamCaptureSpike(page, target, game) {
+  if (game.id !== "bublbobl") {
+    throw new Error(`${target.label} capture spike entered for non-Bubble game ${game.id}`);
+  }
+
+  await page.locator("[data-stream-capture-spike-mount]").waitFor({ timeout: 5_000 });
+  const panelLayout = await page.evaluate(() => {
+    const panel = document.querySelector("[data-stream-capture-spike-mount]");
+    const stage = document.querySelector(".game-stage");
+    const controls = [...document.querySelectorAll(
+      '[data-touch-surface="virtual"] [data-action]'
+    )].filter((element) => {
+      if (element instanceof HTMLButtonElement && element.disabled) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0;
+    });
+    const toRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top
+      };
+    };
+    const panelRect = panel ? toRect(panel) : null;
+    const stageRect = stage ? toRect(stage) : null;
+    const obstructedActions = controls.flatMap((control) => {
+      const rect = control.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit?.closest("[data-action]") === control
+        ? []
+        : [control.getAttribute("data-action") ?? "unknown"];
+    });
+    return {
+      obstructedActions,
+      panelInsideStage: Boolean(panel && stage?.contains(panel)),
+      panelRect,
+      stageRect
+    };
+  });
+  if (
+    !panelLayout.panelInsideStage ||
+    !panelLayout.panelRect ||
+    !panelLayout.stageRect ||
+    panelLayout.panelRect.top < panelLayout.stageRect.top - 1 ||
+    panelLayout.panelRect.left < panelLayout.stageRect.left - 1 ||
+    panelLayout.panelRect.right > panelLayout.stageRect.right + 1 ||
+    panelLayout.panelRect.bottom > panelLayout.stageRect.bottom + 1 ||
+    panelLayout.obstructedActions.length > 0
+  ) {
+    throw new Error(`${target.label} ${game.id} capture panel obstructs gameplay controls: ${JSON.stringify(panelLayout)}`);
+  }
+  try {
+    await page.waitForFunction(() => {
+      const snapshot = window.__ponpokoReadCaptureSpike?.();
+      const preview = document.querySelector('[data-stream-capture-spike="true"] video');
+      return snapshot?.width === 512 &&
+        snapshot.height === 448 &&
+        snapshot.fps === 30 &&
+        snapshot.captureVideoTrackCount === 1 &&
+        snapshot.receivedVideoTrackCount === 1 &&
+        snapshot.videoPath === "bridge" &&
+        snapshot.bridgeReady === true &&
+        snapshot.bridgePlayError === null &&
+        snapshot.previewPlayError === null &&
+        snapshot.videoPipeline?.diagnosis === "ok" &&
+        snapshot.videoPipeline.bridge.verdict === "ok" &&
+        snapshot.videoPipeline.staging.verdict === "ok" &&
+        snapshot.videoPipeline.receiver.verdict === "ok" &&
+        snapshot.inboundVideoFramesDecoded > 0 &&
+        snapshot.previewPresentationReady === true &&
+        snapshot.receivedVideoContentVisible === true &&
+        snapshot.receivedVideoBlack === false &&
+        preview instanceof HTMLVideoElement &&
+        preview.currentTime > 0;
+    }, undefined, { timeout: 20_000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const preview = document.querySelector('[data-stream-capture-spike="true"] video');
+      return {
+        panel: document.querySelector("[data-stream-capture-spike-mount]")?.textContent ?? null,
+        preview: preview instanceof HTMLVideoElement
+          ? {
+              currentTime: preview.currentTime,
+              error: preview.error?.message ?? null,
+              networkState: preview.networkState,
+              paused: preview.paused,
+              readyState: preview.readyState,
+              tracks: preview.srcObject instanceof MediaStream
+                ? preview.srcObject.getTracks().map((track) => ({ kind: track.kind, readyState: track.readyState }))
+                : []
+            }
+          : null,
+        snapshot: window.__ponpokoReadCaptureSpike?.() ?? null
+      };
+    });
+    throw new Error(`${target.label} ${game.id} capture spike did not present visible video: ${JSON.stringify(diagnostic)}`, {
+      cause: error
+    });
+  }
+
+  await page.keyboard.down("5");
+  await page.waitForTimeout(250);
+  await page.keyboard.up("5");
+  await page.keyboard.down("Enter");
+  await page.waitForTimeout(250);
+  await page.keyboard.up("Enter");
+  const audibleAction = game.inputChecks.find((check) => check.expectedInput === 0);
+  if (audibleAction) {
+    await page.keyboard.down(audibleAction.keyboard);
+    await page.waitForTimeout(120);
+    await page.keyboard.up(audibleAction.keyboard);
+  }
+
+  const fallback = page.getByRole("button", { name: "방 열고 소리 켜기" });
+  const allowHeadlessStatsAudio = target.label === "desktop Chromium";
+  let headlessStatsAudioObserved = false;
+
+  if (allowHeadlessStatsAudio) {
+    await page.waitForFunction(() => {
+      const snapshot = window.__ponpokoReadCaptureSpike?.();
+      return snapshot?.ready === true || (
+        snapshot?.captureAudioLevelRms > 0.001 &&
+        snapshot.inboundAudioPacketsReceived > 0
+      );
+    }, undefined, { timeout: 15_000 });
+    headlessStatsAudioObserved = await page.evaluate(() => {
+      const snapshot = window.__ponpokoReadCaptureSpike?.();
+      return snapshot?.ready !== true &&
+        snapshot?.captureAudioLevelRms > 0.001 &&
+        snapshot.inboundAudioPacketsReceived > 0;
+    });
+  } else {
+    await page.waitForFunction(() => {
+      const snapshot = window.__ponpokoReadCaptureSpike?.();
+      return snapshot?.ready === true || snapshot?.fallbackAvailable === true;
+    }, undefined, { timeout: 6_000 }).catch(() => undefined);
+    if (await fallback.isVisible().catch(() => false)) {
+      await fallback.click();
+    }
+  }
+
+  try {
+    if (headlessStatsAudioObserved) {
+      // Headless Chromium can expose non-silent sender/inbound RTP energy while its remote
+      // MediaStream-to-WebAudio analyser remains zero. Physical readiness still requires RMS.
+      await page.waitForFunction(() => {
+        const snapshot = window.__ponpokoReadCaptureSpike?.();
+        const preview = document.querySelector('[data-stream-capture-spike="true"] video');
+        return snapshot?.captureAudioTrackCount === 1 &&
+          snapshot.receivedAudioTrackCount === 1 &&
+          snapshot.receivedVideoTrackCount === 1 &&
+          preview instanceof HTMLVideoElement &&
+          preview.srcObject instanceof MediaStream &&
+          preview.srcObject.getVideoTracks()[0]?.readyState === "live";
+      }, undefined, { timeout: 5_000 });
+    } else {
+      await page.waitForFunction(() => {
+        const snapshot = window.__ponpokoReadCaptureSpike?.();
+        const preview = document.querySelector('[data-stream-capture-spike="true"] video');
+        return snapshot?.ready === true &&
+          snapshot.status === "ready" &&
+          snapshot.captureAudioTrackCount === 1 &&
+          snapshot.receivedAudioTrackCount === 1 &&
+          snapshot.receivedVideoTrackCount === 1 &&
+          preview instanceof HTMLVideoElement &&
+          preview.srcObject instanceof MediaStream &&
+          preview.srcObject.getVideoTracks()[0]?.readyState === "live";
+      }, undefined, { timeout: 15_000 });
+    }
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const currentCtx = window.EJS_emulator?.Module?.AL?.currentCtx;
+      const sources = Array.isArray(currentCtx?.sources)
+        ? currentCtx.sources
+        : Object.values(currentCtx?.sources ?? {});
+      return {
+        audioGraph: currentCtx
+          ? {
+              contextKeys: Object.keys(currentCtx),
+              sourceCount: sources.length,
+              sourceKeys: sources.slice(0, 4).map((source) => Object.keys(source ?? {})),
+              state: currentCtx.audioCtx?.state ?? null
+            }
+          : null,
+        panel: document.querySelector("[data-stream-capture-spike-mount]")?.textContent ?? null,
+        snapshot: window.__ponpokoReadCaptureSpike?.() ?? null
+      };
+    });
+    throw new Error(`${target.label} ${game.id} capture spike did not become ready: ${JSON.stringify(diagnostic)}`, {
+      cause: error
+    });
+  }
+
+  const previewVisual = await capturePreviewVisualEvidence(page, target, game);
+
+  const evidence = {
+    previewVisual,
+    ...(await page.evaluate(() => {
+      const snapshot = window.__ponpokoReadCaptureSpike?.();
+      const preview = document.querySelector('[data-stream-capture-spike="true"] video');
+      return {
+        getUserMediaCalls: window.__gameSmokeGetUserMediaCalls,
+        preview: preview instanceof HTMLVideoElement
+          ? {
+              autoplay: preview.autoplay,
+              muted: preview.muted,
+              playsInline: preview.playsInline,
+              videoTracks: preview.srcObject instanceof MediaStream
+                ? preview.srcObject.getVideoTracks().map((track) => track.readyState)
+                : []
+            }
+          : null,
+        snapshot
+      };
+    }))
+  };
+  if (
+    evidence.getUserMediaCalls !== 0 ||
+    !evidence.preview?.autoplay ||
+    !evidence.preview.muted ||
+    !evidence.preview.playsInline ||
+    evidence.preview.videoTracks[0] !== "live" ||
+    evidence.snapshot?.videoPath !== "bridge" ||
+    evidence.snapshot?.bridgeReady !== true ||
+    evidence.snapshot?.bridgePlayError !== null ||
+    evidence.snapshot?.previewPlayError !== null ||
+    evidence.snapshot?.videoPipeline?.diagnosis !== "ok" ||
+    (evidence.snapshot?.ready !== true && !headlessStatsAudioObserved)
+  ) {
+    throw new Error(`${target.label} ${game.id} capture spike media boundary failed: ${JSON.stringify(evidence)}`);
+  }
+  console.log(`${target.label} ${game.id} capture evidence ${JSON.stringify({
+    audioPackets: evidence.snapshot?.inboundAudioPacketsReceived ?? 0,
+    changedPixelRatio: evidence.previewVisual.changedPixelRatio,
+    framesDecoded: evidence.snapshot?.inboundVideoFramesDecoded ?? 0,
+    audioEvidence: evidence.snapshot?.ready === true ? "receiver-rms" : "headless-sender-rms+packets",
+    inboundAudioEnergy: evidence.snapshot?.inboundAudioTotalEnergy ?? 0,
+    pipeline: evidence.snapshot?.videoPipeline?.diagnosis ?? "missing",
+    ready: evidence.snapshot?.ready === true,
+    rms: evidence.snapshot?.receiverAudioLevelRms ?? 0,
+    visiblePixelRatio: evidence.previewVisual.visiblePixelRatio
+  })}`);
+}
+
+async function capturePreviewVisualEvidence(page, target, game) {
+  const preview = page.locator('[data-stream-capture-spike="true"] video');
+  const fullRegion = { xEnd: 1, xStart: 0, yEnd: 1, yStart: 0 };
+  let previous = await preview.screenshot();
+  let bestChangedPixelRatio = 0;
+  let bestVisiblePixelRatio = visiblePixelRatio(previous, fullRegion);
+
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    await page.waitForTimeout(250);
+    const current = await preview.screenshot();
+    const changedPixelRatio = pixelDifferenceRatio(previous, current);
+    const currentVisiblePixelRatio = visiblePixelRatio(current, fullRegion);
+    bestChangedPixelRatio = Math.max(bestChangedPixelRatio, changedPixelRatio);
+    bestVisiblePixelRatio = Math.max(bestVisiblePixelRatio, currentVisiblePixelRatio);
+    if (currentVisiblePixelRatio >= 0.02 && changedPixelRatio >= 0.01) {
+      return {
+        changedPixelRatio,
+        visiblePixelRatio: currentVisiblePixelRatio
+      };
+    }
+    previous = current;
+  }
+
+  const snapshot = await page.evaluate(() => window.__ponpokoReadCaptureSpike?.() ?? null);
+  throw new Error(`${target.label} ${game.id} capture preview stayed black or static: ${JSON.stringify({
+    bestChangedPixelRatio,
+    bestVisiblePixelRatio,
+    snapshot
+  })}`);
 }
 
 async function advanceMetalSlugTutorial(page, target, game) {
@@ -1711,6 +2252,34 @@ function visiblePixelRatio(pngBuffer, region) {
   }
 
   return total > 0 ? visible / total : 0;
+}
+
+function pixelDifferenceRatio(leftBuffer, rightBuffer) {
+  const left = decodePngRgba(leftBuffer);
+  const right = decodePngRgba(rightBuffer);
+  if (left.width !== right.width || left.height !== right.height) {
+    throw new Error(
+      `Cannot compare screenshots with different sizes ${left.width}x${left.height} and ${right.width}x${right.height}`
+    );
+  }
+
+  let changed = 0;
+  const total = left.width * left.height;
+  for (let y = 0; y < left.height; y += 1) {
+    for (let x = 0; x < left.width; x += 1) {
+      const leftPixel = readPixel(left, x, y);
+      const rightPixel = readPixel(right, x, y);
+      if (
+        Math.abs(leftPixel.red - rightPixel.red) +
+          Math.abs(leftPixel.green - rightPixel.green) +
+          Math.abs(leftPixel.blue - rightPixel.blue) >= 24
+      ) {
+        changed += 1;
+      }
+    }
+  }
+
+  return total > 0 ? changed / total : 0;
 }
 
 function gameplayVisualSignature(pngBuffer, region) {

@@ -39,6 +39,76 @@ button {
     #111111;
 }
 
+.w2-lan-guest-shell {
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(113, 223, 207, 0.08), transparent 44%),
+    #111111;
+}
+
+.w2-lan-guest-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 520px);
+  padding: 18px;
+  border: 1px solid rgba(113, 223, 207, 0.45);
+  border-radius: 10px;
+  background: #1e1e1e;
+}
+
+.w2-lan-guest-card h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.w2-lan-guest-card > p:not(.eyebrow) {
+  color: #d8cfae;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.w2-lan-http-warning {
+  color: #efc84a !important;
+}
+
+[data-w2-lan-guest-mount] > div {
+  display: grid;
+  gap: 10px;
+}
+
+[data-w2-lan-guest-mount] video {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 512 / 448;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: #000000;
+  object-fit: contain;
+}
+
+[data-w2-lan-guest-mount] pre {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #090909;
+  color: #f6f0df;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+[data-w2-lan-guest-mount] button {
+  min-height: 48px;
+  border: 1px solid rgba(239, 200, 74, 0.72);
+  border-radius: 7px;
+  background: #efc84a;
+  color: #14120d;
+  font-weight: 800;
+}
+
 .menu-header {
   max-width: 720px;
   margin: 0 auto 14px;
@@ -536,6 +606,50 @@ p {
   line-height: 1.35;
   pointer-events: none;
   white-space: pre-wrap;
+}
+
+.stream-capture-spike-panel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 21;
+  display: grid;
+  gap: 6px;
+  width: min(260px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid rgba(239, 200, 74, 0.72);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.86);
+  color: #f6f0df;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.stream-capture-spike-panel > p,
+.stream-capture-spike-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.stream-capture-spike-panel video {
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #000;
+}
+
+.stream-capture-spike-panel button {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid rgba(239, 200, 74, 0.72);
+  border-radius: 6px;
+  background: #efc84a;
+  color: #14120d;
+  font: inherit;
+  font-weight: 700;
 }
 
 .emulator-boot-overlay.is-delayed .boot-elapsed {

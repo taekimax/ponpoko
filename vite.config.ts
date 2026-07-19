@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { createExternalRomMiddleware } from "./vite-roms";
+import { createW2LanSignalingPlugin } from "./vite-w2-lan-signaling";
 
 const externalRomPlugin = {
   name: "external-roms",
@@ -13,7 +14,7 @@ const externalRomPlugin = {
 
 export default defineConfig({
   base: "/ponpoko/",
-  plugins: [externalRomPlugin],
+  plugins: [externalRomPlugin, createW2LanSignalingPlugin()],
   server: {
     host: "0.0.0.0",
     allowedHosts: ["jessie.adal-alhena.ts.net"]

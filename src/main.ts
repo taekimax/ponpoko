@@ -47,6 +47,17 @@ import {
   saveManualState,
   type AutosaveRecord
 } from "./state-storage";
+import {
+  isStreamCaptureSpikeEnabled,
+  StreamCaptureSpikeHarness,
+  type StreamCaptureSpikeSnapshot
+} from "./stream-capture-spike";
+import {
+  readW2LanConfig,
+  W2LanGuestHarness,
+  W2LanHostHarness,
+  type W2LanSnapshot
+} from "./w2-lan-capture";
 import "./styles.css";
 
 type ViewState =
@@ -58,13 +69,15 @@ type ViewState =
 
 declare global {
   interface Window {
+    __ponpokoReadCaptureSpike?: () => StreamCaptureSpikeSnapshot;
+    __ponpokoReadW2Lan?: () => W2LanSnapshot;
     __ponpokoTouchLog?: BootDebugTouch[];
   }
 }
 
 const app = getRequiredAppRoot();
-const nativeEmulator = createNativeEmulator();
-const input = new InputRouter(nativeEmulator);
+let nativeEmulator: ReturnType<typeof createNativeEmulator>;
+let input: InputRouter;
 const AUTOSAVE_INTERVAL_MS = 60_000;
 const APP_BOOT_TIMEOUT_SECONDS = 150;
 const TOUCH_POINTER_PREFIX = "touch:";
@@ -86,14 +99,31 @@ let runtimeControlsEnabled = false;
 let runtimeControlsFinalizing = false;
 let runtimeAutosaveRestored = false;
 let runtimePrepStatus: BootDebugRuntimePrep = "pending";
+let streamCaptureSpikeHarness: StreamCaptureSpikeHarness | null = null;
+let w2LanHostHarness: W2LanHostHarness | null = null;
+let w2LanGuestHarness: W2LanGuestHarness | null = null;
+let streamCaptureSpikeStarted = false;
 let disposeControlHandlers: (() => void) | null = null;
 let releaseCurrentControlPointers: (() => void) | null = null;
 const bootDebugEnabled = isBootDebugEnabled(window.location.search);
-const romCacheSaveQueue = new DeferredTaskQueue();
+const streamCaptureSpikeEnabled = isStreamCaptureSpikeEnabled(window.location.search);
+const w2LanConfig = readW2LanConfig(window.location.search);
+const w2LanRoleRequested = new URLSearchParams(window.location.search).has("captureRole");
+const w2LanStandalonePage = w2LanConfig?.role === "guest" || (w2LanRoleRequested && !w2LanConfig);
+let romCacheSaveQueue: DeferredTaskQueue;
 
-input.attachKeyboard(window);
-registerServiceWorker();
-render();
+if (w2LanConfig?.role === "guest") {
+  renderW2LanGuest();
+} else if (w2LanRoleRequested && !w2LanConfig) {
+  renderW2LanQueryError();
+} else {
+  nativeEmulator = createNativeEmulator();
+  input = new InputRouter(nativeEmulator);
+  romCacheSaveQueue = new DeferredTaskQueue();
+  input.attachKeyboard(window);
+  registerServiceWorker();
+  render();
+}
 
 function getRequiredAppRoot(): HTMLDivElement {
   const root = document.querySelector<HTMLDivElement>("#app");
@@ -106,6 +136,43 @@ function getRequiredAppRoot(): HTMLDivElement {
 function setState(nextState: ViewState): void {
   state = nextState;
   render();
+}
+
+function renderW2LanGuest(): void {
+  if (!w2LanConfig || w2LanConfig.role !== "guest") {
+    return;
+  }
+  app.innerHTML = `
+    <main class="app-shell w2-lan-guest-shell">
+      <section class="w2-lan-guest-card">
+        <p class="eyebrow">W2 LAN diagnostic</p>
+        <h1>Phone B 수신</h1>
+        <p>Phone A의 보글보글 영상과 게임음만 받습니다. ROM과 에뮬레이터는 이 화면에서 시작하지 않습니다.</p>
+        <p class="w2-lan-http-warning">LAN HTTP 진단이며 secure context 또는 Home Screen 증거가 아닙니다.</p>
+        <div data-w2-lan-guest-mount></div>
+      </section>
+    </main>
+  `;
+  const mount = app.querySelector<HTMLElement>("[data-w2-lan-guest-mount]");
+  if (!mount) {
+    return;
+  }
+  const harness = new W2LanGuestHarness();
+  w2LanGuestHarness = harness;
+  window.__ponpokoReadW2Lan = () => harness.getSnapshot();
+  harness.mount(mount, w2LanConfig.room);
+}
+
+function renderW2LanQueryError(): void {
+  app.innerHTML = `
+    <main class="app-shell w2-lan-guest-shell">
+      <section class="w2-lan-guest-card error-panel">
+        <p class="eyebrow">W2 LAN diagnostic</p>
+        <h1>테스트 URL을 확인하세요</h1>
+        <p><code>captureSpike=1</code>과 정확한 <code>captureRole=host</code> 또는 <code>captureRole=guest</code>가 필요합니다.</p>
+      </section>
+    </main>
+  `;
 }
 
 function render(): void {
@@ -299,6 +366,7 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
       <section class="${stageClassName}">
         <div id="game"></div>
         ${controlsEnabled ? "" : renderEmulatorBootOverlay()}
+        ${shouldRunStreamCaptureSpike(game) ? renderStreamCaptureSpikePanel() : ""}
       </section>
       <section class="${controlPanelClassName}">
         ${renderVirtualArcadeControls(profile, controlsEnabled)}
@@ -313,7 +381,7 @@ function renderGame(game: GameEntry, controlsEnabled: boolean, status: string): 
       input.releaseAll();
       void saveActiveAutosave();
       stopAutosave();
-      nativeEmulator.dispose();
+      disposeActiveRuntime();
       window.location.href = "/ponpoko/";
     });
   });
@@ -461,6 +529,18 @@ function renderBootDebugPanel(): string {
   `;
 }
 
+function renderStreamCaptureSpikePanel(): string {
+  const description = w2LanConfig?.role === "host"
+    ? "Phone A host → Phone B guest · 임시 LAN HTTP 진단"
+    : "같은 페이지 수신 루프백 · 실제 iPhone 2대 증거 아님";
+  return `
+    <aside class="stream-capture-spike-panel" data-stream-capture-spike-mount aria-live="polite">
+      <strong>W2 capture spike</strong>
+      <p>${description}</p>
+    </aside>
+  `;
+}
+
 function renderError(game: GameEntry, message: string, startMode: AutosaveStartMode): void {
   stopAutosave();
   clearDeferredRomCacheSaves();
@@ -489,7 +569,7 @@ function renderError(game: GameEntry, message: string, startMode: AutosaveStartM
     input.releaseAll();
     void saveActiveAutosave();
     stopAutosave();
-    nativeEmulator.dispose();
+    disposeActiveRuntime();
     setState({ name: "menu" });
   });
 }
@@ -499,7 +579,8 @@ async function startGame(game: GameEntry, startMode: AutosaveStartMode): Promise
   void saveActiveAutosave();
   stopAutosave();
   clearDeferredRomCacheSaves();
-  nativeEmulator.dispose();
+  disposeActiveRuntime();
+  prepareStreamCaptureSpike(game);
   stopStartupAssist();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
@@ -544,7 +625,7 @@ async function startGame(game: GameEntry, startMode: AutosaveStartMode): Promise
     nativeEmulator.suppressRuntimeChrome();
   } catch (error) {
     input.releaseAll();
-    nativeEmulator.dispose();
+    disposeActiveRuntime();
     releaseWakeLock();
     stopBootProgressMonitor();
     stopEmulatorChromeSuppression();
@@ -980,6 +1061,80 @@ function requestRuntimeAudioUnlock(): void {
   void unlockRuntimeAudio();
 }
 
+function shouldRunStreamCaptureSpike(game: GameEntry): boolean {
+  return streamCaptureSpikeEnabled && game.id === "bublbobl";
+}
+
+function prepareStreamCaptureSpike(game: GameEntry): void {
+  if (!shouldRunStreamCaptureSpike(game)) {
+    return;
+  }
+
+  if (w2LanConfig?.role === "host") {
+    const harness = new W2LanHostHarness();
+    w2LanHostHarness = harness;
+    window.__ponpokoReadW2Lan = () => harness.getSnapshot();
+    return;
+  }
+
+  const harness = new StreamCaptureSpikeHarness();
+  streamCaptureSpikeHarness = harness;
+  window.__ponpokoReadCaptureSpike = () => harness.getSnapshot();
+  try {
+    void harness.attemptReceiverAudioArm();
+  } catch {
+    // The harness renders the unsupported receiver state after runtime readiness.
+  }
+}
+
+function startStreamCaptureSpike(): void {
+  if (streamCaptureSpikeStarted || state.name !== "game") {
+    return;
+  }
+
+  const adapter = nativeEmulator.getStreamCaptureAdapter();
+  const mount = app.querySelector<HTMLElement>("[data-stream-capture-spike-mount]");
+  if (!adapter || !mount) {
+    return;
+  }
+
+  streamCaptureSpikeStarted = true;
+  if (w2LanConfig?.role === "host" && w2LanHostHarness) {
+    void w2LanHostHarness.start(adapter, mount, w2LanConfig.room).catch(() => {
+      // The query-gated LAN harness retains and renders its own failure snapshot.
+    });
+    return;
+  }
+  if (!streamCaptureSpikeHarness) {
+    streamCaptureSpikeStarted = false;
+    return;
+  }
+  void streamCaptureSpikeHarness.start(adapter, mount).catch(() => {
+    // The query-gated harness retains and renders its own failure snapshot.
+  });
+}
+
+function stopStreamCaptureSpike(): void {
+  streamCaptureSpikeHarness?.stop();
+  streamCaptureSpikeHarness = null;
+  w2LanHostHarness?.stop();
+  w2LanHostHarness = null;
+  streamCaptureSpikeStarted = false;
+  delete window.__ponpokoReadCaptureSpike;
+  delete window.__ponpokoReadW2Lan;
+}
+
+function stopW2LanGuest(): void {
+  w2LanGuestHarness?.stop();
+  w2LanGuestHarness = null;
+  delete window.__ponpokoReadW2Lan;
+}
+
+function disposeActiveRuntime(): void {
+  stopStreamCaptureSpike();
+  nativeEmulator.dispose();
+}
+
 async function unlockRuntimeAudio(): Promise<void> {
   try {
     await nativeEmulator.unlockAudio();
@@ -1158,6 +1313,7 @@ function enableRuntimeControls(): void {
     }
     startAutosave(state.game);
     drainDeferredRomCacheSavesAfterPaint();
+    startStreamCaptureSpike();
   }
 }
 
@@ -1270,7 +1426,7 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
 
   releaseWakeLock();
   input.releaseAll();
-  nativeEmulator.dispose();
+  disposeActiveRuntime();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -1285,7 +1441,7 @@ function renderBootFailure(snapshot: BootProgressSnapshot): void {
 function renderAutosaveRestoreFailure(game: GameEntry, startMode: AutosaveStartMode): void {
   releaseWakeLock();
   input.releaseAll();
-  nativeEmulator.dispose();
+  disposeActiveRuntime();
   stopBootProgressMonitor();
   stopEmulatorChromeSuppression();
   stopBootDebugPanel();
@@ -1600,6 +1756,10 @@ function releaseWakeLock(): void {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    if (w2LanStandalonePage) {
+      stopW2LanGuest();
+      return;
+    }
     void saveActiveAutosave();
     releaseCurrentControlPointers?.();
     input.releaseAll();
@@ -1607,16 +1767,24 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("pagehide", (event) => {
+  if (w2LanStandalonePage) {
+    stopW2LanGuest();
+    return;
+  }
+  stopW2LanGuest();
   handleRuntimePageHide(event, createRuntimePageLifecycleContext());
 });
 
 window.addEventListener("pageshow", (event) => {
+  if (w2LanStandalonePage) {
+    return;
+  }
   handleRuntimePageShow(event, createRuntimePageLifecycleContext());
 });
 
 function createRuntimePageLifecycleContext(): RuntimePageLifecycleContext {
   return {
-    disposeEmulator: () => nativeEmulator.dispose(),
+    disposeEmulator: disposeActiveRuntime,
     isGameActive: () => state.name === "game",
     isRuntimePlayable: () => runtimeControlsEnabled,
     pauseEmulator: () => nativeEmulator.pause(),

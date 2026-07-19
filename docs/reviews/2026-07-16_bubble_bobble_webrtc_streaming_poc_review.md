@@ -16,20 +16,22 @@ Track the approved planning, implementation, verification, and physical-device c
 
 | I# | Source IDs | Owner | Status | Scope boundary | Verification |
 | --- | --- | --- | --- | --- | --- |
-| I0 | P1-P14 / W0 | Planner | `needs-clarification` | Create project-local loop policy, planning/review/evaluator artifacts, and a docs-only remote handoff; no implementation code, dependency, DNS, secret, paid resource, or external-service mutation | P/W inventory, contract consistency, whitespace/fence checks, independent Evaluator report, live 1P smoke, consolidated user approval |
+| I0 | P1-P14 / W0 | Planner | `done` | Record D013-D017 and synchronize the authoritative W0 contract; no implementation code, dependency, DNS, secret, paid resource, or external-service mutation | Decision-source report, contract consistency, independent Evaluator PASS |
+| I1 | P6, P10 / W1 | Generator | `done` | Player-aware native input contract and adapters only; local input fixed to P1; no network, dependency, or W2 source | Corrected P1/P2 scoped-release tests, required local checks, and independent re-evaluation PASS |
+| I2 | P2, P4, P5 / W2 | Generator | `partial` | Local capture adapter plus D021's temporary LAN HTTP A-to-B harness and D023 interval-normalized silence correction; no dependency, external infrastructure, W3, or product route | D021/D022/D023 repairs pass final local/browser verification and independent ACCEPT. Physical initial A/V passed before D023, but D022 failed natural silence and D023 has no physical recheck. |
 
-W1 and later implementation IDs are not activated until I0/W0 is `done`. After approval they will be added one at a time with one owner, exact allowed/forbidden paths, source P# mapping, and focused verification.
+W2 was activated only after W1 independently closed. W3 and later implementation IDs remain inactive because W2 ended `partial`; they can be added only after the physical W2 gate changes W2 to `done`.
 
 ## W0 Approval Recommendation
 
 | Approval item | Recommended default | Constraint / trade-off |
 | --- | --- | --- |
-| Signaling | Deferred; Cloudflare Workers Free plus SQLite Durable Object remains a zero-cost candidate | No account information or provisioning is required for this handoff. Exact provider/domain remains a W0 choice. |
-| TURN | Deferred; no paid host is authorized | A self-hosted coturn VM needs a provider/domain/secret owner. Cloudflare Realtime TURN may fit a free PoC allowance but is managed TURN rather than coturn, so it requires explicit contract approval. Shared public credentials are not an acceptable completion path. |
-| TURN DNS | Deferred with the provider choice | A self-hosted coturn path still needs a trusted public endpoint and explicit DNS ownership. Do not invent a bypass; leave W4 and forced-TURN evidence blocked. |
-| DNS and secrets | User remains the sole owner | Keep the shared TURN secret only in a Cloudflare encrypted secret and root-readable coturn configuration. Never put account credentials or TURN shared secrets in Git, the client bundle, chat, invite URLs, or logs. Browser credentials have TTL at most five minutes. |
-| QR generation | Exact-pin `uqr@0.1.3` as the only production dependency | MIT, ESM, built-in types, and zero runtime transitive dependencies. Render the encoded matrix in app-owned canvas; add decode/smoke coverage because the package is 0.x. |
-| Devices | Two physical iPhone 15 Pro devices, using their actually installed stable iOS versions | Phone A host Home Screen app / Phone B guest Safari tab, then swap roles. Do not downgrade or install a beta solely for this PoC. Record the iOS setting value because Safari/WebKit is bundled with iOS. |
+| Signaling | Selected: Cloudflare Workers Free + room Durable Object at `ponpoko-2p.taekimax.workers.dev` | Contract target only; account/subdomain/deployment remain W4 gates. |
+| TURN | Selected: Cloudflare Realtime TURN, 300-second credentials, USD 0 authorization, 800GB cutoff | Explicit managed replacement for coturn; no paid overage or shared public credentials. |
+| TURN DNS | No custom TURN DNS | Use provider endpoints including TURNS 443; omit port 53 browser URLs. |
+| DNS and secrets | User/operator owns the Cloudflare account and encrypted Worker secrets | Never put `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN`, or participant credentials in Git, Pages, chat, URLs, or logs. |
+| QR generation | Selected: exact-pin `uqr@0.1.3` at W7 | MIT, ESM, built-in types, zero runtime dependencies; app-owned rendering and decode/camera coverage. |
+| Devices | Selected: two iPhone 15 Pro, iOS 26.5.2 build 23F84/system Safari 26.5 | Phone A Home Screen host / Phone B Safari guest, then swap; physical readback and evidence remain pending. |
 | Branch | Push only the W0 documents to `origin/2p-bubble` and set upstream | User-approved handoff action. Do not push/merge `main`, trigger Pages, or treat this as W0 implementation approval. |
 
 ## Open-Source and Official Evidence
@@ -66,6 +68,22 @@ W1 and later implementation IDs are not activated until I0/W0 is `done`. After a
 
 `CP4 | W0 | Handoff Evaluator | done | no Critical/High/Medium/Low findings; staged docs, live main/Pages, 1P evidence, and resume contract reviewed | commit, push, verify remote/main/live 1P`
 
+`CP5 | W0 | Planner | in_progress | D013-D017 and current source evaluation recorded; no code/dependency/infra mutation | independent evaluation`
+
+`CP6 | W0 | Evaluator | done | PASS; no Critical/High/Medium blocker; Low doc hygiene corrected | begin W1 only`
+
+`CP7 | W1 | Generator | in_progress | player-aware contract/adapters and scoped P2 release tests pass all required local checks; first evaluator evidence gap corrected | independent W1 re-evaluation; keep W2 blocked`
+
+`CP8 | W1 | Evaluator | done | PASS with no findings; scoped P2 release preserves identical active P1 input | begin bounded local W2 only; retain physical Gate 1A and W3 block`
+
+`CP9 | W2 | Generator | in_progress | local adapter/query loopback passes 123 tests, build/static smoke, desktop/mobile capture smoke, and full query-off regression; physical evidence absent | independent evaluation; proposed partial; do not start W3`
+
+`CP10 | W2 | Evaluator | partial | corrected adapter/query loopback passes 127 tests, rollback/race/watchdog regressions, rebuilt capture/query-off smokes, and final review with no finding; physical Gate 1A absent | stop; retain exact device procedure; keep W3 blocked`
+
+`CP11 | W2 | Operator | partial | D022 physical A-to-B passed initial moving video/audible audio/no prompt/ready, then false-classified the quiet host waiting screen as receiver output silence | stop without retry; keep W3 blocked`
+
+`CP12 | W2 | Generator/Evaluator | partial | D023 interval-normalized energy and float/byte-aware receiver analysis pass 208 tests, full local/browser smokes, and independent ACCEPT | publish handoff; next machine performs one physical D023 A-to-B recheck`
+
 ## Verification
 
 - Planner inventory check: P1-P14 and W0-W12 are present in `.loop/01_spec.md`, `.loop/02_contract.md`, and `.loop/03_plan.md`.
@@ -80,6 +98,11 @@ W1 and later implementation IDs are not activated until I0/W0 is `done`. After a
 - Docs-only handoff baseline: `npm run typecheck`, `npm test` (20 files / 113 tests), `npm run build`, and local `GAME_RUNTIME_SMOKE_GAME=bublbobl npm run games:smoke` all passed.
 - Full feature-flag-off regression: `npm run browser:smoke` passed, including Ponpoko WebKit, unfiltered catalog desktop/mobile runtime smoke, and Ponpoko preparation-failure handling.
 - Independent handoff evaluation: no Critical, High, Medium, or Low findings; recommendation `PASS` for `origin/2p-bubble` only.
+- W1 generator verification: typecheck; focused 4 files / 35 tests; all 20 files / 114 tests; production build; targeted Bubble Bobble desktop/mobile runtime smoke; and `git diff --check` all pass.
+- W1 final evaluation: PASS with no Critical, High, Medium, or Low finding after scoped P2 cleanup was tested while an identical P1 input remained active.
+- W2 final verification: focused 2 files / 13 tests; adapter/runtime/lifecycle 5 files / 38 tests; all 22 files / 127 tests; typecheck; build; static smoke; final rebuilt opt-in desktop/mobile capture smoke; final rebuilt targeted query-off Bubble smoke; earlier full query-off browser/catalog/prep-failure regression; and `git diff --check` pass.
+- W2 final evaluation: PASS with no Critical, High, Medium, or Low code finding after transactional rollback, async-generation safety, five-second watchdog, attempted-arm wording, destination-track ownership, and stale-stats corrections. Closure is `partial` because automated loopback is not actual-iPhone non-silent/audible or two-device proof.
+- D023 final verification: focused W2 LAN/signaling 2 files / 55 tests; full 24 files / 208 tests; typecheck; production build; static smoke; two-page LAN desktop/mobile; query-off Bubble desktop/mobile; full flag-off browser/catalog/preparation-failure smoke; and `git diff --check` all pass on Node 25.8.1. Independent evaluation returned ACCEPT with no finding. No post-D023 physical proof exists.
 
 ## Deletion Impact Note
 
@@ -87,4 +110,4 @@ No test, documentation, configuration, source, ROM, dependency, or generated art
 
 ## Current Closure
 
-W0 remains `needs-clarification`. Branch handoff is resolved by D011, but no implementation slice is authorized until signaling/domain, TURN/cost/DNS-secret ownership, QR dependency, and the exact two-iPhone matrix are approved and recorded in `.loop/05_decisions.md`. Cloudflare provisioning and all secrets remain deferred.
+W0 and W1 are `done`; W2 is `partial`; W3 is `blocked`. D021 passed cross-device initial A/V, D022 then failed physical natural-silence classification, and D023 locally corrected the raw-energy/receiver-resolution defect. Node 25.8.1 verification passes focused 2 files/55 tests, full 24 files/208 tests, typecheck, build, static smoke, W2 two-page LAN desktop/mobile, query-off Bubble desktop/mobile, full flag-off browser/catalog/preparation-failure smoke, and diff-check. Independent D023 evaluation returned ACCEPT with no finding. Node 24 was unavailable, and no post-D023 iPhone result exists, so CI parity and physical closure are not claimed. LAN HTTP is not secure-context/Home Screen evidence; D021's W2-only role-swap waiver does not change W11's exact pair, both orientations, or direct/TURN matrix.

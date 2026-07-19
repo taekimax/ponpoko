@@ -1,11 +1,14 @@
 import type { BootProgressRuntime } from "./boot-progress";
 import { ROM_BASE_PATH, resolveRomPath, type GameEntry } from "./catalog";
-import type {
-  EmulatorInput,
-  NativeEmulator,
-  NativeEmulatorSnapshot,
-  NativeEmulatorState
+import {
+  PlayerInputAdapter,
+  type EmulatorInput,
+  type EmulatorPlayer,
+  type NativeEmulator,
+  type NativeEmulatorSnapshot,
+  type NativeEmulatorState
 } from "./native-emulator";
+import { StreamCaptureAdapter, type StreamCaptureSource } from "./stream-capture";
 
 const EMULATOR_DATA_PATH = "/ponpoko/emulatorjs/";
 const EMULATOR_LOADER_URL = `${EMULATOR_DATA_PATH}loader.js`;
@@ -19,26 +22,22 @@ interface EmulatorWarmupOptions {
 
 interface DebugInputLogEntry {
   input: number;
+  player: EmulatorPlayer;
   pressed: EmulatorJsInputState;
 }
 
-interface EmulatorJsAudioContext {
-  resume?: () => Promise<void> | void;
-  state?: string;
-}
-
 interface EmulatorJsAudioSource {
-  gain?: {
-    context?: EmulatorJsAudioContext;
-  };
+  gain?: AudioNode;
 }
 
 interface EmulatorJsRuntime {
   callEvent?: (eventName: string) => void;
+  canvas?: HTMLCanvasElement;
   Module?: {
     AL?: {
       currentCtx?: {
-        audioCtx?: EmulatorJsAudioContext;
+        audioCtx?: AudioContext;
+        gain?: AudioNode;
         sources?: EmulatorJsAudioSource[] | Record<string, EmulatorJsAudioSource>;
       };
     };
@@ -84,6 +83,7 @@ export interface NativeRuntimeDebugInfo {
 export type EmulatorJsDebugInfo = NativeRuntimeDebugInfo;
 
 export interface NativeRuntimeAdapter extends NativeEmulator {
+  getStreamCaptureAdapter(): StreamCaptureAdapter | null;
   getBootProgressRuntime(): BootProgressRuntime | undefined;
   hasLoaderScript(): boolean;
   isInputReady(minFrame: number): boolean;
@@ -348,7 +348,7 @@ export function createNativeEmulator(options: NativeEmulatorSelectionOptions = {
 }
 
 export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
-  private readonly activeInputs = new Set<EmulatorInput>();
+  private readonly playerInputs = new PlayerInputAdapter();
   private game: GameEntry | null = null;
   private lastError: NativeEmulatorSnapshot["lastError"];
   private state: NativeEmulatorState = "idle";
@@ -406,12 +406,16 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
     return false;
   }
 
-  press(input: EmulatorInput): void {
-    this.activeInputs.add(input);
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.press(player, input);
   }
 
-  release(input: EmulatorInput): void {
-    this.activeInputs.delete(input);
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.release(player, input);
+  }
+
+  releasePlayer(player: EmulatorPlayer): void {
+    this.playerInputs.releasePlayer(player);
   }
 
   dispose(): void {
@@ -421,7 +425,7 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
 
   getSnapshot(): NativeEmulatorSnapshot {
     return {
-      activeInputs: [...this.activeInputs],
+      activeInputs: this.playerInputs.getActiveInputs(),
       gameId: this.game?.id,
       lastError: this.lastError,
       runtimeName: "direct-mame2003-plus",
@@ -432,6 +436,10 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
 
   getBootProgressRuntime(): BootProgressRuntime | undefined {
     return undefined;
+  }
+
+  getStreamCaptureAdapter(): StreamCaptureAdapter | null {
+    return null;
   }
 
   hasLoaderScript(): boolean {
@@ -477,7 +485,7 @@ export class DirectPonpokoNativeEmulator implements NativeRuntimeAdapter {
   }
 
   private releaseActiveInputs(): void {
-    this.activeInputs.clear();
+    this.playerInputs.releaseAll();
   }
 }
 
@@ -547,12 +555,16 @@ class RuntimeSelectingNativeEmulator implements NativeRuntimeAdapter {
     return this.active.loadState(state);
   }
 
-  press(input: EmulatorInput): void {
-    this.active.press(input);
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.active.press(player, input);
   }
 
-  release(input: EmulatorInput): void {
-    this.active.release(input);
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.active.release(player, input);
+  }
+
+  releasePlayer(player: EmulatorPlayer): void {
+    this.active.releasePlayer(player);
   }
 
   dispose(): void {
@@ -567,6 +579,10 @@ class RuntimeSelectingNativeEmulator implements NativeRuntimeAdapter {
 
   getBootProgressRuntime(): BootProgressRuntime | undefined {
     return this.active.getBootProgressRuntime();
+  }
+
+  getStreamCaptureAdapter(): StreamCaptureAdapter | null {
+    return this.active.getStreamCaptureAdapter();
   }
 
   hasLoaderScript(): boolean {
@@ -598,12 +614,15 @@ class RuntimeSelectingNativeEmulator implements NativeRuntimeAdapter {
 }
 
 export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
-  private readonly activeInputs = new Set<EmulatorInput>();
+  private readonly playerInputs = new PlayerInputAdapter((player, input, pressed) => {
+    this.sendInput(player, input, pressed ? 1 : 0);
+  });
   private audioContext: AudioContext | null = null;
   private audioState: NativeEmulatorSnapshot["audioState"] = "locked";
   private game: GameEntry | null = null;
   private lastError: NativeEmulatorSnapshot["lastError"];
   private state: NativeEmulatorState = "idle";
+  private streamCaptureAdapter: StreamCaptureAdapter | null = null;
   private target: HTMLElement | null = null;
   private timings: NativeEmulatorSnapshot["timings"] = {};
 
@@ -704,26 +723,22 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
     }
   }
 
-  press(input: EmulatorInput): void {
-    if (this.activeInputs.has(input)) {
-      return;
-    }
-
-    this.activeInputs.add(input);
-    this.sendInput(input, 1);
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.press(player, input);
   }
 
-  release(input: EmulatorInput): void {
-    if (!this.activeInputs.has(input)) {
-      return;
-    }
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.release(player, input);
+  }
 
-    this.activeInputs.delete(input);
-    this.sendInput(input, 0);
+  releasePlayer(player: EmulatorPlayer): void {
+    this.playerInputs.releasePlayer(player);
   }
 
   dispose(): void {
     this.releaseActiveInputs();
+    this.streamCaptureAdapter?.stop();
+    this.streamCaptureAdapter = null;
     resetEmulatorJsRuntime();
     void this.audioContext?.close();
     this.audioContext = null;
@@ -734,12 +749,12 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   getSnapshot(): NativeEmulatorSnapshot {
-    const canvas = this.target?.querySelector("canvas") ?? document.querySelector("#game canvas");
+    const canvas = this.readCanvas();
     const runtime = this.getRuntime();
     const frameCount = readFrame(runtime?.gameManager);
 
     return {
-      activeInputs: [...this.activeInputs],
+      activeInputs: this.playerInputs.getActiveInputs(),
       audioState: this.audioState,
       canvasSize: typeof HTMLCanvasElement !== "undefined" && canvas instanceof HTMLCanvasElement
         ? { height: canvas.height, width: canvas.width }
@@ -755,6 +770,15 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
 
   getBootProgressRuntime(): BootProgressRuntime | undefined {
     return this.getRuntime();
+  }
+
+  getStreamCaptureAdapter(): StreamCaptureAdapter | null {
+    if (this.game?.id !== "bublbobl") {
+      return null;
+    }
+
+    this.streamCaptureAdapter ??= new StreamCaptureAdapter(() => this.readStreamCaptureSource());
+    return this.streamCaptureAdapter;
   }
 
   hasLoaderScript(): boolean {
@@ -816,6 +840,36 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
     return window.EJS_emulator;
   }
 
+  private readStreamCaptureSource(): StreamCaptureSource {
+    const canvas = this.readCanvas();
+    if (!canvas) {
+      throw new Error("Bubble Bobble capture canvas is not available");
+    }
+
+    const currentCtx = this.getRuntime()?.Module?.AL?.currentCtx;
+    const sources = Array.isArray(currentCtx?.sources)
+      ? currentCtx.sources
+      : Object.values(currentCtx?.sources ?? {});
+    const sourceGains = sources.flatMap((source) => source?.gain ? [source.gain] : []);
+    const gainNodes = currentCtx?.gain ? [currentCtx.gain] : sourceGains;
+
+    return {
+      canvas,
+      ...(currentCtx?.audioCtx ? { audioContext: currentCtx.audioCtx } : {}),
+      gainNodes
+    };
+  }
+
+  private readCanvas(): HTMLCanvasElement | null {
+    const runtimeCanvas = this.getRuntime()?.canvas;
+    if (isUsableCanvas(runtimeCanvas)) {
+      return runtimeCanvas;
+    }
+
+    const domCanvas = this.target?.querySelector("canvas") ?? document.querySelector("#game canvas");
+    return isUsableCanvas(domCanvas) ? domCanvas : null;
+  }
+
   private readState(runtime: EmulatorJsRuntime | undefined): NativeEmulatorState {
     if (this.state === "disposed" || this.state === "failed") {
       return this.state;
@@ -837,16 +891,21 @@ export class EmulatorJsNativeEmulator implements NativeRuntimeAdapter {
   }
 
   private releaseActiveInputs(): void {
-    for (const input of [...this.activeInputs]) {
-      this.release(input);
-    }
+    this.playerInputs.releaseAll();
   }
 
-  private sendInput(input: EmulatorInput, pressed: EmulatorJsInputState): void {
+  private sendInput(player: EmulatorPlayer, input: EmulatorInput, pressed: EmulatorJsInputState): void {
     const inputId = getEmulatorJsInputId(input);
-    recordDebugInput(inputId, pressed);
-    this.getRuntime()?.gameManager?.simulateInput?.(0, inputId, pressed);
+    recordDebugInput(player, inputId, pressed);
+    this.getRuntime()?.gameManager?.simulateInput?.(player, inputId, pressed);
   }
+}
+
+function isUsableCanvas(value: unknown): value is HTMLCanvasElement {
+  return typeof HTMLCanvasElement !== "undefined" &&
+    value instanceof HTMLCanvasElement &&
+    value.width > 0 &&
+    value.height > 0;
 }
 
 function isDirectRuntimeUnavailable(error: unknown): boolean {
@@ -883,9 +942,9 @@ function createRomFile(game: GameEntry, rom: Blob | ArrayBuffer): File {
   return new File([rom], game.romFile, { type: "application/zip" });
 }
 
-function recordDebugInput(input: number, pressed: EmulatorJsInputState): void {
+function recordDebugInput(player: EmulatorPlayer, input: number, pressed: EmulatorJsInputState): void {
   const log = window.__ponpokoInputLog ?? [];
-  log.push({ input, pressed });
+  log.push({ input, player, pressed });
   window.__ponpokoInputLog = log.slice(-12);
 }
 
@@ -911,15 +970,19 @@ async function resumeRuntimeAudio(
   return state;
 }
 
-function readRuntimeAudioContexts(runtime: EmulatorJsRuntime | undefined): EmulatorJsAudioContext[] {
+function readRuntimeAudioContexts(runtime: EmulatorJsRuntime | undefined): AudioContext[] {
   const currentCtx = runtime?.Module?.AL?.currentCtx;
   if (!currentCtx) {
     return [];
   }
 
-  const contexts = new Set<EmulatorJsAudioContext>();
+  const contexts = new Set<AudioContext>();
   if (currentCtx.audioCtx) {
     contexts.add(currentCtx.audioCtx);
+  }
+  const masterContext = currentCtx.gain?.context;
+  if (masterContext && "resume" in masterContext) {
+    contexts.add(masterContext as AudioContext);
   }
 
   const sources = Array.isArray(currentCtx.sources)
@@ -927,8 +990,8 @@ function readRuntimeAudioContexts(runtime: EmulatorJsRuntime | undefined): Emula
     : Object.values(currentCtx.sources ?? {});
   for (const source of sources) {
     const context = source.gain?.context;
-    if (context) {
-      contexts.add(context);
+    if (context && "resume" in context) {
+      contexts.add(context as AudioContext);
     }
   }
 

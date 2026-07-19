@@ -279,7 +279,7 @@ describe("EmulatorJS startup configuration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps simultaneous EmulatorJS inputs active without resending held directions", () => {
+  it("releases P2 EmulatorJS inputs without disturbing an identical active P1 input", () => {
     const simulateInput = vi.fn();
     vi.stubGlobal("window", {
       EJS_emulator: {
@@ -288,22 +288,40 @@ describe("EmulatorJS startup configuration", () => {
         }
       }
     });
+    vi.stubGlobal("document", {
+      querySelector: vi.fn(() => null)
+    });
 
     const emulator = new EmulatorJsNativeEmulator();
-    emulator.press("left");
-    emulator.press("left");
-    emulator.press("action1");
-    emulator.release("action1");
-    emulator.release("left");
-    emulator.release("left");
+    emulator.press(0, "left");
+    emulator.press(0, "left");
+    emulator.press(1, "left");
+    emulator.press(1, "action1");
+    emulator.releasePlayer(1);
 
-    expect(simulateInput).toHaveBeenCalledTimes(4);
+    expect(emulator.getSnapshot().activeInputs).toEqual([
+      { input: "left", player: 0 }
+    ]);
+    expect(simulateInput).toHaveBeenCalledTimes(5);
     expect(simulateInput.mock.calls).toEqual([
       [0, 6, 1],
-      [0, 0, 1],
-      [0, 0, 0],
-      [0, 6, 0]
+      [1, 6, 1],
+      [1, 0, 1],
+      [1, 6, 0],
+      [1, 0, 0]
     ]);
+    expect(emulator.readDebugInfo().inputLog).toEqual([
+      { input: 6, player: 0, pressed: 1 },
+      { input: 6, player: 1, pressed: 1 },
+      { input: 0, player: 1, pressed: 1 },
+      { input: 6, player: 1, pressed: 0 },
+      { input: 0, player: 1, pressed: 0 }
+    ]);
+
+    emulator.release(0, "left");
+
+    expect(simulateInput).toHaveBeenLastCalledWith(0, 6, 0);
+    expect(emulator.getSnapshot().activeInputs).toEqual([]);
     vi.unstubAllGlobals();
   });
 
@@ -363,6 +381,90 @@ describe("EmulatorJS startup configuration", () => {
     expect("EJS_emulator" in window).toBe(false);
     expect("EJS_gameParentUrl" in window).toBe(false);
     expect("EJS_dontExtractBIOS" in window).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("prefers the EmulatorJS-owned canvas over an incidental DOM canvas", () => {
+    class CanvasDouble {
+      constructor(readonly width: number, readonly height: number) {}
+    }
+    const runtimeCanvas = new CanvasDouble(256, 224) as unknown as HTMLCanvasElement;
+    const incidentalCanvas = new CanvasDouble(1, 1) as unknown as HTMLCanvasElement;
+    const target = {
+      querySelector: vi.fn(() => incidentalCanvas)
+    } as unknown as HTMLElement;
+    vi.stubGlobal("HTMLCanvasElement", CanvasDouble);
+    vi.stubGlobal("window", {
+      EJS_emulator: {
+        canvas: runtimeCanvas,
+        gameManager: { getFrameNum: vi.fn(() => 42) }
+      }
+    });
+    vi.stubGlobal("document", { querySelector: vi.fn(() => incidentalCanvas) });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    emulator.attach(target);
+
+    expect(emulator.getSnapshot()).toMatchObject({
+      canvasSize: { height: 224, width: 256 },
+      frameCount: 42
+    });
+    expect(target.querySelector).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("prefers the stable OpenAL master gain for stream capture", () => {
+    class CanvasDouble {
+      constructor(readonly width: number, readonly height: number) {}
+    }
+    const runtimeCanvas = new CanvasDouble(256, 224) as unknown as HTMLCanvasElement;
+    const masterGain = { context: createAudioContext("running") } as unknown as AudioNode;
+    const sourceGain = { context: createAudioContext("running") } as unknown as AudioNode;
+    vi.stubGlobal("HTMLCanvasElement", CanvasDouble);
+    vi.stubGlobal("window", {
+      EJS_emulator: {
+        canvas: runtimeCanvas,
+        Module: {
+          AL: {
+            currentCtx: {
+              audioCtx: createAudioContext("running"),
+              gain: masterGain,
+              sources: [{ gain: sourceGain }]
+            }
+          }
+        }
+      }
+    });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    const captureSource = (
+      emulator as unknown as {
+        readStreamCaptureSource(): { gainNodes?: readonly AudioNode[] };
+      }
+    ).readStreamCaptureSource();
+
+    expect(captureSource.gainNodes).toEqual([masterGain]);
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to a usable DOM canvas when the runtime canvas has no drawable size", () => {
+    class CanvasDouble {
+      constructor(readonly width: number, readonly height: number) {}
+    }
+    const emptyRuntimeCanvas = new CanvasDouble(0, 0) as unknown as HTMLCanvasElement;
+    const domCanvas = new CanvasDouble(256, 224) as unknown as HTMLCanvasElement;
+    const target = {
+      querySelector: vi.fn(() => domCanvas)
+    } as unknown as HTMLElement;
+    vi.stubGlobal("HTMLCanvasElement", CanvasDouble);
+    vi.stubGlobal("window", { EJS_emulator: { canvas: emptyRuntimeCanvas } });
+    vi.stubGlobal("document", { querySelector: vi.fn(() => null) });
+
+    const emulator = new EmulatorJsNativeEmulator();
+    emulator.attach(target);
+
+    expect(emulator.getSnapshot().canvasSize).toEqual({ height: 224, width: 256 });
+    expect(target.querySelector).toHaveBeenCalledWith("canvas");
     vi.unstubAllGlobals();
   });
 });

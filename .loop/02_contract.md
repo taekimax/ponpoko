@@ -2,20 +2,28 @@
 
 ## Objective
 
-Implement and evaluate the Bubble Bobble two-player WebRTC screen-streaming PoC exactly within `docs/plans/2026-07-16_bubble-bobble-webrtc-streaming-poc.md`, with the tighter target constraints recorded in `.loop/00_request.md`: iPhone 15 Pro Safari/Home Screen, no Android work, no forced workaround for unavailable real-device evidence, and no `done` result without real direct and TURN proof.
+Implement and evaluate the Bubble Bobble two-player WebRTC screen-streaming PoC exactly within `docs/plans/2026-07-16_bubble-bobble-webrtc-streaming-poc.md`, with the tighter target constraints recorded in `.loop/00_request.md`: iPhone 16 Pro Max plus iPhone 15 Pro Safari/Home Screen support, no Android work, no forced workaround for unavailable real-device evidence, and no `done` result without real direct and TURN proof.
 
 ## Current Gate
 
-Status: `needs-clarification`.
+Status: W0 and W1 `done`; bounded local W2 implementation independently accepted and assigned `partial`. Initial system-Safari diagnostics produced black received video, and the first false-ready correction still rendered black on Phone A while honestly reporting `failed`. The WebGL-to-video-to-512x448 bridge then passed local checks and bounded same-page Safari runs on Phone A without fallback and on Phone B's iPhone 15 Pro Max/iOS 26.5.2 proxy after exactly one permitted `방 열고 소리 켜기` tap. D021's later A-to-B LAN runs proved moving cross-device receiver video, initial game audio, zero permission prompts, one guest CTA, and one host fallback. D022 preserved strict initial audible acquisition and added silence/loss labels, but its fresh physical run falsely classified a quiet waiting screen as `수신 출력 무음`. D023 replaces any-positive-energy mismatch with interval-normalized inbound RMS, improves receiver RMS precision, and keeps ambiguous statistics from revoking readiness; local verification and independent evaluation passed. No post-D023 physical run exists. W2 cannot become `done`, and W3 remains blocked, until actual-iPhone Gate 1A supplies correct post-correction natural-silence behavior plus the remaining approved secure-origin/Home Screen coverage.
 
-W0 is not complete. Before implementation code, dependency, or infrastructure changes, the user must approve in one response:
+The user's 2026-07-18 continuation instruction directs resolution of all four remaining W0 choices and progression only after evaluation. D013-D017 record:
 
-1. signaling provider and HTTPS/WSS domain;
-2. coturn provider, cost ceiling, and DNS/secret owner;
-3. QR dependency addition or dependency-free policy; and
-4. two physical iPhones plus exact iOS/Safari and Safari-tab/Home-Screen test assignments.
+1. Cloudflare Workers Free plus SQLite-backed Durable Objects at `https://ponpoko-2p.taekimax.workers.dev`, with WSS at `/v1/session`;
+2. Cloudflare Realtime TURN, USD 0 monthly authorization, an 800 GB fail-closed issuance cutoff, no custom TURN DNS, and user-owned encrypted Worker secrets;
+3. exact-pinned `uqr@0.1.3` when W7 begins, with no in-app scanner; and
+4. the historical two-iPhone 15 Pro matrix later superseded by D019 for device inventory.
 
-Approval must be recorded in `.loop/05_decisions.md`. Remote unavailability for machine permission prompts is not authorization to bypass this gate. D011 separately authorizes only committing the W0 documentation and setting `origin/2p-bubble` as upstream; it does not authorize implementation, rebase, merge, a `main` push, Pages deployment, infrastructure, DNS, secrets, or a paid resource.
+D019 fixes the current support pair to Phone A iPhone 16 Pro Max and Phone B iPhone 15 Pro, both on iOS 26.5.2. Build numbers may remain unconfirmed only for the 2026-07-19 practical compatibility diagnostic; formal evidence still requires Settings readback, an approved secure origin, Home Screen/Safari coverage, and actual Phone A-to-B playback/audibility. D021 later supersedes D019's swapped-role requirement for W2 only; D019's exact W11 product pair and direct/TURN matrix remain unchanged.
+
+D020 keeps the iPhone 15 Pro as the product support target but accepts the tested iPhone 15 Pro Max as Phone B's practical proxy for W2 media-path compatibility and cross-device Gate 1A evidence. Exact-model repetition is not required unless a device-specific failure relevant to this path appears.
+
+D021 authorizes and implements a temporary W2-only same-Wi-Fi LAN HTTP harness with Mac process-memory signaling for a sender-only Phone A host to a ROM/emulator-free receiver-only D020 Phone B proxy guest. It uses non-trickle local ICE with `iceServers: []`; process-lifetime nonreused signaling revisions; observed-revision offer compare-and-set with one bounded active-host conflict retry; revision-conditional deletion; a two-second ready lease with 500 ms guest heartbeat and false revocation; strict initial AV acquisition; monotonic video transport/content and audio RTP freshness; D023's interval-normalized packet/energy/output classification for post-acquisition natural silence; a fresh continuous two-second material-inbound-energy/receiver-output mismatch timer; immediate track/AudioContext revocation; async generation fencing; a five-second silent watchdog with one fallback; recovery from a residual answered generation; and structural guest pre-routing. The corrected implementation and readiness stabilization passed final independent evaluation. For this W2 objective the user explicitly waived the swapped orientation because no material role-relevant device difference is expected; revisit it only if a later device-specific issue appears. This does not authorize W3 protocol/product routing, Tailscale, a public tunnel, Pages, TURN, DNS, secrets, dependencies, or external infrastructure. LAN HTTP is not secure-context or Home Screen evidence. The physical A-to-B runs passed moving video and initial guest audio; D022 then failed on natural silence, while D023 remains locally accepted but physically unverified, so W2 stays `partial` and W3 blocked.
+
+D023 keeps D022's strict acquisition and two-second RTP/output-loss boundaries but computes inbound interval RMS as `sqrt(ΔtotalAudioEnergy / ΔtotalSamplesDuration)` instead of treating every positive energy delta as material. Receiver output RMS uses float time-domain samples when available and a conservative byte-resolution fallback otherwise. Missing, non-finite, zero-duration, or reset energy statistics interrupt mismatch continuity and render only a recent-normal grace state; they do not bypass RTP, video, track, or AudioContext failure gates.
+
+The independent Evaluator accepted these selections for local entry with no Critical, High, or Medium blocker. They do not assert that infrastructure or phones currently exist, do not authorize provisioning or dependency installation ahead of its slice, and do not replace W2/W4/W7/W11 entry evidence. D011 continues to prohibit a `main` push, Pages deployment, rebase, merge, DNS/secret mutation, or paid resource.
 
 ## Scope
 
@@ -59,11 +67,11 @@ W0 establishes and W11 evaluates the full contract; focused work ownership is li
 
 | Work | Requirement mapping | Entry gate | Completion evidence |
 |---|---|---|---|
-| W0 | P1-P14 | `.loop/` initialized | Four open user approval groups recorded, branch disposition already recorded in D011, contract diff reviewed; status `done`. |
+| W0 | P1-P14 | `.loop/` initialized | D013-D017 record the four selected targets and branch boundary; independent contract-diff evaluation passes; status `done`. |
 | W1 | P6, P10 | W0 `done` | Player-aware unit tests and P1/P2 simultaneous press/release smoke pass. |
 | W2 | P2, P4, P5 | W1 `done`; W0-approved device matrix recorded | Local capture-spike harness/adapter and automated checks are implemented first. Closure additionally requires the actual post-ROM OpenAL context to produce changing audio level and tester-audible output, working video, and a host path of one tap or one fallback tap. API existence or track count alone is insufficient. |
 | W3 | P2, P7, P8, P9, P10, P12 | W2 actual-iPhone Gate 1A passed | Protocol/reducer/reconnect/invalid/foreign-epoch/out-of-order tests pass. W3 must not start or be called complete before W2 passes. |
-| W4 | P3, P8, P9, P12 | W3 `done`; provider/domain/cost/DNS/secret approvals active | Expiry, rate-limit, production-origin, auth redaction, and forced-relay integration pass. |
+| W4 | P3, P8, P9, P12 | W3 `done`; the D013-D014 Cloudflare account/domain/cost/secret prerequisites are live and reverified | Expiry, rate-limit, production-origin, auth redaction, credential-revocation, 800 GB cutoff, and forced-relay integration pass. |
 | W5 | P5, P6, P7, P8, P9, P10, P12 | W4 `done` | Two-browser host integration passes for media, safe P2, readiness, and start-command semantics using a Coin/Start test double only. The real game-runtime port remains unbound and actual Coin/Start call count is zero. |
 | W6 | P1, P2, P4, P5, P6 | W5 `done` | Guest audit shows zero ROM/core/loader/cache/EJS access and WebKit playback/controls pass. |
 | W7 | P2, P3, P4, P12 | W6 `done`; QR policy approved | QR/share/code success plus expiry, reuse, fragment removal, and permission-prompt tests pass. |
@@ -75,11 +83,14 @@ W0 establishes and W11 evaluates the full contract; focused work ownership is li
 
 ### W2 implementation versus closure
 
-- Physical-device execution is known to be unavailable during the development stage; this does not prohibit a bounded W2 implementation after W0 is `done` and W1 is `done`.
+- Physical-device execution was unavailable during the initial development stage; this did not prohibit a bounded W2 implementation after W0 and W1 became `done`.
 - Allowed W2 work is the minimal reproducible capture-spike harness, 4.2.3 capture adapter, one-time host audio fallback path, and local unit/build/browser checks required to execute the future device spike.
-- The first physical W2 validation remains ROM load followed by creation of the real EmulatorJS OpenAL context, non-silent energy, and tester-audible guest output.
-- Synthetic tones, mocked stats, desktop API presence, track count, or architectural substitution are not device evidence.
-- If local W2 work is complete but the physical spike cannot run, the Evaluator assigns W2 `partial` or `blocked`, records the exact future execution procedure and missing evidence, and stops the pipeline before W3.
+- A practical direct-LAN HTTP same-page Safari diagnostic later confirmed query/build access, no permission prompts, live tracks/contexts, rising counters, and same-device audible audio, but both received previews were black. This is failed compatibility evidence, not Gate 1A proof.
+- After the display-buffer bridge and WebKit play-race correction, Phone A passed the same-page visual check without fallback and the D020-accepted iPhone 15 Pro Max Phone B proxy passed after one fallback tap. This completes the practical per-device Safari compatibility question; no run isolated receiver-only audio or sent media between devices.
+- D021's two physical A-to-B LAN runs sent moving video between devices and initially produced guest-observed game audio with no permission prompt. In the final run, a later quiet interval made the prior continuous-RMS gate revoke readiness. The user subsequently clarified that this game legitimately has silent waiting and intermittent quiet play intervals, while the old panel did not show whether RTP packets and inbound energy continued. Treat that interval as inconclusive, not as failed receiver audio and not as Gate 1A closure. No recording file was transferred into the workspace.
+- Synthetic tones, mocked stats, desktop API presence, track count, LAN HTTP behavior, or architectural substitution are not secure cross-device evidence.
+- W2 evidence still requires the real EmulatorJS OpenAL context, non-silent energy, working Phone B guest video, tester-audible guest output, and approved secure-origin/Home Screen coverage using the D019 targets or D020's accepted proxy. D021 waives only the swapped-orientation repeat for this W2 objective; the A-host-to-B-guest direction remains required, and the waiver must be revisited if a device-specific issue appears.
+- Until those fields pass, the Evaluator keeps W2 `partial` or `blocked`, records the exact future execution procedure and missing evidence, and stops the pipeline before W3.
 
 ## Mandatory Safety Invariants
 
@@ -125,9 +136,11 @@ W0 establishes and W11 evaluates the full contract; focused work ownership is li
 
 ### Infrastructure and data
 
-- GitHub Pages hosts only the frontend. Approved HTTPS/WSS signaling and coturn are separate.
+- GitHub Pages hosts only the frontend. Approved Cloudflare Workers/Durable Objects signaling and Cloudflare Realtime TURN are separate.
 - Never embed long-lived TURN secrets or fixed TURN accounts in JavaScript.
 - TURN credential TTL is five minutes or less; invite TTL is five minutes; reconnect grace is 60 seconds; session maximum is 60 minutes.
+- Do not return the provider's port-53 ICE URLs to browsers. Do not authorize Workers Paid or Realtime overage; stop credential issuance at 800 GB of account-period Realtime egress and fail closed if the free allowance or pricing changes.
+- Keep `CF_TURN_KEY_ID` and `CF_TURN_API_TOKEN` only as encrypted Worker secrets owned by the user/operator; generate participant credentials server-side and revoke them on close, leave, expiry, or security shutdown.
 - Authenticate WSS with the first application frame, not a URL query; process no other message before authentication and close after three seconds unauthenticated.
 - Remove invitation fragments immediately and redact tokens, SDP, ICE, TURN credentials, fragments, and full IPs from logs/analytics.
 
@@ -161,7 +174,7 @@ The second command is deliberately unfiltered. If tests are added, removed, or r
 
 ### Actual-device gates
 
-- W2 closure: actual iPhone ROM load, post-load OpenAL context, non-silent energy delta, human-audible guest output, muted `playsinline` video, and host one-tap/fallback-tap count. During development, preserve this as the future physical execution gate and report local harness results separately.
+- W2 closure: D019's mixed-iPhone pair or the D020-accepted iPhone 15 Pro Max Phone B proxy, with Settings build/Safari-mode inventory, approved secure origin, ROM load, post-load OpenAL context, non-silent energy delta, human-audible Phone A-host-to-Phone B-guest output, muted `playsinline` video, and host one-tap/fallback-tap count. D021 waives the swapped orientation for W2 only unless a device-specific issue appears; it does not waive secure-origin or Home Screen evidence. Report LAN HTTP and same-page harness results separately.
 - Direct: 10 fresh rooms on the same primary iPhone pair; at least 9 first frames within 8 seconds and selected candidate pair is non-relay.
 - Forced TURN: 10 fresh rooms; at least 9 first frames within 12 seconds and selected candidate pair includes `relay`.
 - Soak: direct 20 minutes and forced relay 20 minutes; after 60-second warm-up average at least 28 fps, dropped frames under 5%, and no unrecovered freeze.
@@ -220,6 +233,6 @@ Only these statuses are valid: `in_progress`, `done`, `partial`, `blocked`, `dec
 - Any destructive file operation.
 - Any dependency or framework change, including QR generation.
 - Any third-party code copy or new license/attribution obligation.
-- Any signaling/TURN provider, paid resource, domain, DNS, or secret operation.
+- Any signaling/TURN account or service provisioning, paid resource, domain, DNS, or secret operation, including the D013-D014 targets.
 - Any schema/database/auth/security change beyond the approved contract.
 - Any broad architecture rewrite, irreversible migration, or work outside the requested scope.

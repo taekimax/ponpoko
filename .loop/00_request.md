@@ -2,7 +2,7 @@
 
 ## Source of Truth
 
-- User implementation request dated 2026-07-16.
+- User implementation request dated 2026-07-16 and physical-test continuation dated 2026-07-19.
 - Planning document: `docs/plans/2026-07-16_bubble-bobble-webrtc-streaming-poc.md`.
 - Repository policy: `AGENTS.md` and `.loop/01_spec.md` through `.loop/06_log.md`.
 - This file records the request; `.loop/02_contract.md` is the implementation contract.
@@ -13,7 +13,7 @@ Implement the Bubble Bobble (`bublbobl`) two-player WebRTC screen-streaming PoC 
 
 The implementation must be developed in small slices in strict order beginning with W1, W2, then W3. Before any implementation code changes, W0 must obtain one consolidated user approval covering external hosting, TURN cost/ownership, QR dependency policy, and the actual two-iPhone test matrix. The user later resolved branch disposition separately by explicitly authorizing a documentation-only commit and push to `origin/2p-bubble` for remote handoff, while keeping `main` and the live GitHub Pages deployment untouched.
 
-The development session is remote. New interactive machine permission prompts cannot be answered, and physical-device execution is unavailable during development. Do not attempt forced workarounds or change the architecture merely to bypass unavailable real-device testing. After W0 approval and W1 completion, the minimal W2 capture-spike harness/adapter and its local automated checks may still be implemented. Actual iPhone execution remains the W2 closure gate; without it, stop at W2 with `partial` or `blocked` and do not enter W3. The practical target is iPhone 15 Pro, Safari, installed and run as a Home Screen web app. Android is out of scope for this request.
+The initial development session was remote and physical execution was unavailable. Do not attempt forced workarounds or change the architecture merely to bypass missing real-device evidence. After W0 approval and W1 completion, the minimal W2 capture-spike harness/adapter and its local automated checks may be implemented. A later practical diagnostic used system Safari on an iPhone 16 Pro Max and an iPhone 15 Pro, both reporting iOS 26.5.2 with build numbers unconfirmed, and found black received video on both devices. Actual secure cross-device iPhone execution remains the W2 closure gate; without it, stop at W2 with `partial` or `blocked` and do not enter W3. Both named models are support targets, Safari and Home Screen mode remain in scope, and Android remains out of scope.
 
 ## User Intent
 
@@ -27,20 +27,38 @@ The development session is remote. New interactive machine permission prompts ca
 
 1. Read `AGENTS.md`, all standard `.loop/` files, and the planning document in full.
 2. Initialize and synchronize `.loop/` with P1-P14 and W0-W12.
-3. Obtain one consolidated approval for the four still-open W0 items below before changing implementation code, dependencies, or external infrastructure. The already-authorized documentation-only `2p-bubble` handoff push is not implementation entry.
+3. Obtain one consolidated approval for the four still-open W0 items below before changing implementation code, dependencies, or external infrastructure. The 2026-07-18 continuation instruction supplied that decision authority; D013-D017 record the selected targets. The already-authorized documentation-only `2p-bubble` handoff push is not implementation entry.
 4. After approval, complete W1, then implement the minimal W2 spike harness/adapter and local verification needed for later physical execution.
 5. Close W2 only after the real-iPhone OpenAL non-silent/audible gate passes. If that execution is unavailable, record W2 as `partial` or `blocked` and stop; do not start W3.
 6. Only after W2 is `done`, execute W3 followed by W4-W12 as small verified feature slices.
 
 ## W0 Approval Questions
 
-Current status: `needs-clarification`.
+Current status: `done`; D013-D017 and the synchronized contract diff passed independent evaluation. W1 is `done`, and the later bounded W2 implementation independently passed but closed `partial`. D019 records the updated mixed-device support matrix and the diagnostic-only build-number exception. D021's one-way LAN HTTP harness delivered moving cross-device video and initial audible guest audio. A fresh D022 physical run again reached that initial normal state, but a quiet host waiting screen was classified on Phone B as `수신 출력 무음` with `ready=no` instead of healthy game silence. D023 corrects the evidenced false mismatch locally by using W3C interval-normalized inbound RMS plus float receiver analysis; its full local verification and independent evaluation passed, but no post-D023 physical device run exists. Approved secure-origin/Home Screen execution and formal closure evidence also remain missing, so Gate 1A is incomplete.
 
 1. Signaling hosting provider and exact HTTPS/WSS domain.
 2. coturn hosting provider, monthly or total PoC cost ceiling, and the owner for DNS and secrets.
 3. Whether adding a QR-generation dependency is approved; if not, use only an already-present capability or a scoped dependency-free implementation after contract review.
-4. The two physical iPhones available for testing and the exact iOS/Safari combinations, including which device runs Safari tab mode and which runs the Home Screen web app.
+4. The two physical iPhones available for testing and the exact iOS/Safari combinations, including which device runs Safari tab mode and which runs the Home Screen web app. D019 is the current device decision.
 5. Resolved for this handoff: keep the work on `2p-bubble`, publish it as `origin/2p-bubble`, and do not merge or push to `main`. The live Pages source remains `main`; any later merge requires a separate verified release decision.
+
+## 2026-07-18 W0 Selection
+
+The current continuation instruction explicitly requires resolving the four remaining choices and proceeding only after W0 evaluation. The selected contractual targets are:
+
+1. Cloudflare Workers Free plus one SQLite-backed Durable Object per room at `https://ponpoko-2p.taekimax.workers.dev`, with WSS at `/v1/session`.
+2. Cloudflare Realtime TURN as the approved managed replacement for coturn, USD 0 monthly authorization, 800 GB fail-closed issuance cutoff, no custom TURN DNS, and user-owned Cloudflare secret bindings.
+3. Exact-pin `uqr@0.1.3` only when W7 begins; no in-app QR scanner.
+4. Historical W0 target: two iPhone 15 Pro units targeting stable iOS 26.5.2 build 23F84/system Safari 26.5, with Phone A Home Screen host and Phone B Safari-tab guest, then swapped. D019 supersedes only this device inventory for future physical work.
+
+These are policy and target selections, not claims that Cloudflare resources have been provisioned or that physical devices have been inspected. D013-D017 and `.loop/reports/2026-07-18_w0_decision_evaluation.md` define the ownership, cost, reversal, and evidence boundaries. W0 became `done` after independent evaluation; external operations remain separately review-gated.
+
+## 2026-07-19 Physical Compatibility Update
+
+- Phone A: iPhone 16 Pro Max, iOS 26.5.2, build unconfirmed.
+- Phone B: iPhone 15 Pro, iOS 26.5.2, build unconfirmed.
+- Both models are supported targets. The user allowed unconfirmed build numbers only for the bounded practical compatibility diagnostic.
+- Formal secure-mode and W11 closure still require Settings inventory, an approved secure origin, Home Screen/Safari role coverage, actual cross-device guest playback/audibility, and both role orientations. D021 separately waives the swapped orientation only for its bounded one-way LAN HTTP W2 diagnostic, and D022 only corrects natural-silence readiness; neither decision waives the formal W11 matrix.
 
 ## Non-Negotiable Safety Conditions
 

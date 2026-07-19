@@ -29,7 +29,21 @@ Then read, in order:
 7. `.loop/06_log.md`
 8. `docs/plans/2026-07-16_bubble-bobble-webrtc-streaming-poc.md`
 
-## Exact Status
+## 2026-07-18 Resume Update
+
+- D013-D017 now select Cloudflare Workers Free/Durable Objects signaling at `ponpoko-2p.taekimax.workers.dev`, Cloudflare Realtime TURN under a USD 0/800GB fail-closed policy, exact-pinned `uqr@0.1.3` for W7, and the two-iPhone 15 Pro/iOS 26.5.2 Safari/Home Screen matrix.
+- These are contract targets only. No account, Worker, TURN key, DNS, secret, dependency, or physical-device evidence has been created or claimed.
+- W0 and W1 passed independent evaluation and are `done`. The corrected bounded local W2 implementation passed final independent evaluation with no finding and is `partial`; actual-iPhone/two-device non-silent and audible evidence is still required for W2 `done`, and W3 remains blocked.
+
+## 2026-07-20 D023 Publish Update
+
+- The current handoff contains the full bounded W0/W1/W2 work. D021's temporary same-Wi-Fi LAN HTTP Phone A-host-to-Phone B-guest path passed physical initial moving video, audible guest audio, zero permission prompts, one guest CTA, one host fallback, and `ready=yes`.
+- The fresh D022 physical run then failed natural-silence classification: a quiet host waiting screen became `수신 출력 무음` with `ready=no`. D023 corrects the evidenced raw-energy/8-bit-analysis defect using interval-normalized inbound RMS, float receiver samples, a conservative byte fallback, and unknown/reset-stat handling.
+- Node 25.8.1 checks pass: focused 2 files / 55 tests, full 24 files / 208 tests, typecheck, production build, static smoke, W2 two-page LAN desktop/mobile, query-off Bubble desktop/mobile, full feature-flag-off browser/catalog/preparation-failure smoke, and diff-check. Independent evaluation returned ACCEPT with no finding. Node 24 was unavailable.
+- No post-D023 physical run exists because the user became unavailable. On the next machine, read `.loop/04_progress.md`, D023 in `.loop/05_decisions.md`, the final entries in `.loop/06_log.md`, and `.loop/reports/2026-07-18_w2_capture_spike.md`. Then run only one bounded A-to-B recheck when both phones are available: prove initial normal A/V, leave Phone A on the quiet waiting screen, and require Phone B `게임 무음(전송 정상)` with `ready=yes`.
+- Keep W2 `partial` and W3 `blocked`. Do not treat LAN HTTP as secure-origin/Home Screen/Gate 1A closure, do not swap roles for this W2 objective unless device-specific evidence appears, and do not modify `main`, Pages, Tailscale, TURN, DNS, certificates, firewall, dependencies, or infrastructure without a new scoped decision.
+
+## Historical Handoff Status
 
 - Planning: `done`.
 - Implementation entry/W0: `needs-clarification`.
@@ -55,16 +69,16 @@ It verified Bubble Bobble ROM boot, rendered frames, and mapped 1P inputs in des
 
 The same handoff baseline also passed `npm run typecheck`, `npm test` (20 files / 113 tests), `npm run build`, local `GAME_RUNTIME_SMOKE_GAME=bublbobl npm run games:smoke`, and the full feature-flag-off `npm run browser:smoke` suite.
 
-## Resume Gate
+## Superseded Resume Gate
 
-Obtain one explicit response covering all four remaining W0 items:
+The following four items were open at the 2026-07-16 handoff and are superseded by D013-D017:
 
 1. signaling provider and exact HTTPS/WSS domain;
 2. coturn or explicitly approved managed-TURN provider, zero-cost/cost ceiling, and DNS/secret owner;
 3. QR dependency approval or rejection; and
 4. two actual iPhones with exact iOS versions and Safari-tab/Home-Screen role assignments.
 
-Record those choices in `.loop/05_decisions.md`, have an Evaluator confirm W0, and only then start W1. Execute W1, then the bounded W2 harness. Do not start W3 or claim W2 `done` without actual-iPhone post-ROM OpenAL non-silent and audible guest evidence.
+The Evaluator accepted the corrected bounded W2 adapter/query-loopback diff and `.loop/reports/2026-07-18_w2_capture_spike.md`, then closed W2 as `partial` for unavailable actual-iPhone/two-device evidence. Resume only the report's physical procedure through a separately authorized secure, contract-compatible two-device path. Do not start W3 or claim W2 `done` without post-ROM OpenAL non-silent and audible cross-device guest evidence.
 
 ## Safety Locks
 

@@ -27,6 +27,13 @@ export type EmulatorInput =
   | "coin"
   | "start";
 
+export type EmulatorPlayer = 0 | 1;
+
+export interface ActiveEmulatorInput {
+  input: EmulatorInput;
+  player: EmulatorPlayer;
+}
+
 export interface NativeEmulatorSnapshot {
   state: NativeEmulatorState;
   gameId?: string;
@@ -35,7 +42,7 @@ export interface NativeEmulatorSnapshot {
   fps?: number;
   canvasSize?: { width: number; height: number };
   audioState?: "locked" | "suspended" | "running" | "unknown";
-  activeInputs: EmulatorInput[];
+  activeInputs: ActiveEmulatorInput[];
   timings: Partial<Record<"romFetchMs" | "runtimeLoadMs" | "firstFrameMs", number>>;
   lastError?: { code: string; message: string; cause?: unknown };
 }
@@ -49,8 +56,9 @@ export interface NativeEmulator {
   reset(): void;
   saveState(): Promise<Uint8Array | null>;
   loadState(state: Uint8Array): Promise<boolean>;
-  press(input: EmulatorInput): void;
-  release(input: EmulatorInput): void;
+  press(player: EmulatorPlayer, input: EmulatorInput): void;
+  release(player: EmulatorPlayer, input: EmulatorInput): void;
+  releasePlayer(player: EmulatorPlayer): void;
   dispose(): void;
   getSnapshot(): NativeEmulatorSnapshot;
 }
@@ -68,17 +76,85 @@ export interface FakeNativeEmulatorCall {
     | "unlockAudio";
   gameId?: string;
   input?: EmulatorInput;
+  player?: EmulatorPlayer;
 }
 
 export interface FakeNativeEmulatorInputCall {
   input: EmulatorInput;
+  player: EmulatorPlayer;
   type: "press" | "release";
+}
+
+type PlayerInputHandler = (
+  player: EmulatorPlayer,
+  input: EmulatorInput,
+  pressed: boolean
+) => void;
+
+export class PlayerInputAdapter {
+  private readonly activeInputs = new Map<EmulatorPlayer, Set<EmulatorInput>>();
+
+  constructor(private readonly handleInput: PlayerInputHandler = () => {}) {}
+
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    let playerInputs = this.activeInputs.get(player);
+    if (!playerInputs) {
+      playerInputs = new Set<EmulatorInput>();
+      this.activeInputs.set(player, playerInputs);
+    }
+
+    if (playerInputs.has(input)) {
+      return;
+    }
+
+    playerInputs.add(input);
+    this.handleInput(player, input, true);
+  }
+
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    const playerInputs = this.activeInputs.get(player);
+    if (!playerInputs?.delete(input)) {
+      return;
+    }
+
+    if (playerInputs.size === 0) {
+      this.activeInputs.delete(player);
+    }
+    this.handleInput(player, input, false);
+  }
+
+  releasePlayer(player: EmulatorPlayer): void {
+    const playerInputs = this.activeInputs.get(player);
+    if (!playerInputs) {
+      return;
+    }
+
+    for (const input of [...playerInputs]) {
+      this.release(player, input);
+    }
+  }
+
+  releaseAll(): void {
+    for (const player of [...this.activeInputs.keys()]) {
+      this.releasePlayer(player);
+    }
+  }
+
+  getActiveInputs(): ActiveEmulatorInput[] {
+    return [...this.activeInputs].flatMap(([player, inputs]) =>
+      [...inputs].map((input) => ({ input, player }))
+    );
+  }
 }
 
 export class FakeNativeEmulator implements NativeEmulator {
   readonly calls: FakeNativeEmulatorCall[] = [];
   readonly inputCalls: FakeNativeEmulatorInputCall[] = [];
-  private readonly activeInputs = new Set<EmulatorInput>();
+  private readonly playerInputs = new PlayerInputAdapter((player, input, pressed) => {
+    const method = pressed ? "press" : "release";
+    this.calls.push({ input, method, player });
+    this.inputCalls.push({ input, player, type: method });
+  });
   private state: NativeEmulatorState = "idle";
   private gameId: string | undefined;
   private audioState: NativeEmulatorSnapshot["audioState"] = "locked";
@@ -124,24 +200,16 @@ export class FakeNativeEmulator implements NativeEmulator {
     return false;
   }
 
-  press(input: EmulatorInput): void {
-    if (this.activeInputs.has(input)) {
-      return;
-    }
-
-    this.activeInputs.add(input);
-    this.calls.push({ input, method: "press" });
-    this.inputCalls.push({ input, type: "press" });
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.press(player, input);
   }
 
-  release(input: EmulatorInput): void {
-    if (!this.activeInputs.has(input)) {
-      return;
-    }
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.playerInputs.release(player, input);
+  }
 
-    this.activeInputs.delete(input);
-    this.calls.push({ input, method: "release" });
-    this.inputCalls.push({ input, type: "release" });
+  releasePlayer(player: EmulatorPlayer): void {
+    this.playerInputs.releasePlayer(player);
   }
 
   dispose(): void {
@@ -152,7 +220,7 @@ export class FakeNativeEmulator implements NativeEmulator {
 
   getSnapshot(): NativeEmulatorSnapshot {
     return {
-      activeInputs: [...this.activeInputs],
+      activeInputs: this.playerInputs.getActiveInputs(),
       audioState: this.audioState,
       gameId: this.gameId,
       runtimeName: "fake",
@@ -162,8 +230,6 @@ export class FakeNativeEmulator implements NativeEmulator {
   }
 
   private releaseActiveInputs(): void {
-    for (const input of [...this.activeInputs]) {
-      this.release(input);
-    }
+    this.playerInputs.releaseAll();
   }
 }

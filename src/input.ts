@@ -1,5 +1,5 @@
 import { getKeyboardActionKeys, type ControlAction, type ControllerProfile } from "./controllers";
-import type { EmulatorInput, NativeEmulator } from "./native-emulator";
+import type { EmulatorInput, EmulatorPlayer, NativeEmulator } from "./native-emulator";
 
 interface KeyboardInputBinding {
   code: string;
@@ -63,6 +63,7 @@ const CONTROL_SEQUENCES: Partial<Record<ControlAction, EmulatorInput[]>> = {
 const SUSTAINED_INPUTS = new Set<EmulatorInput>(["left", "right"]);
 const SUSTAIN_INTERVAL_MS = 120;
 const KEYBOARD_LISTENER_OPTIONS = { capture: true };
+const LOCAL_PLAYER: EmulatorPlayer = 0;
 
 export class InputRouter {
   private readonly activeInputCounts = new Map<EmulatorInput, number>();
@@ -125,7 +126,7 @@ export class InputRouter {
     this.activeInputCounts.set(input, nextCount);
 
     if (nextCount === 1) {
-      this.emulator.press(input);
+      this.emulator.press(LOCAL_PLAYER, input);
       this.startSustain(input);
     }
   }
@@ -136,7 +137,7 @@ export class InputRouter {
     if (currentCount <= 1) {
       this.activeInputCounts.delete(input);
       this.stopSustain(input);
-      this.emulator.release(input);
+      this.emulator.release(LOCAL_PLAYER, input);
     } else {
       this.activeInputCounts.set(input, currentCount - 1);
     }
@@ -157,7 +158,7 @@ export class InputRouter {
     this.activeKeys.clear();
     for (const input of [...this.activeInputCounts.keys()]) {
       this.stopSustain(input);
-      this.emulator.release(input);
+      this.emulator.release(LOCAL_PLAYER, input);
     }
     this.activeInputCounts.clear();
   }
@@ -277,7 +278,7 @@ export class InputRouter {
         return;
       }
 
-      this.emulator.press(input);
+      this.emulator.press(LOCAL_PLAYER, input);
     }, SUSTAIN_INTERVAL_MS);
 
     this.sustainTimers.set(input, timer);

@@ -7,7 +7,9 @@ import {
 } from "../src/emulator";
 import {
   FakeNativeEmulator,
+  PlayerInputAdapter,
   type EmulatorInput,
+  type EmulatorPlayer,
   type NativeEmulatorSnapshot,
   type NativeEmulatorState
 } from "../src/native-emulator";
@@ -21,8 +23,8 @@ describe("NativeEmulator contract", () => {
     await emulator.load(CATALOG[0], new ArrayBuffer(4));
     await emulator.unlockAudio();
     await emulator.start();
-    emulator.press("left");
-    emulator.press("action1");
+    emulator.press(0, "left");
+    emulator.press(0, "action1");
     emulator.pause();
     emulator.reset();
     emulator.dispose();
@@ -41,10 +43,10 @@ describe("NativeEmulator contract", () => {
       "dispose"
     ]);
     expect(emulator.inputCalls).toEqual([
-      { input: "left", type: "press" },
-      { input: "action1", type: "press" },
-      { input: "left", type: "release" },
-      { input: "action1", type: "release" }
+      { input: "left", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "press" },
+      { input: "left", player: 0, type: "release" },
+      { input: "action1", player: 0, type: "release" }
     ]);
     expect(emulator.getSnapshot()).toMatchObject({
       activeInputs: [],
@@ -52,6 +54,33 @@ describe("NativeEmulator contract", () => {
       runtimeName: "fake",
       state: "disposed"
     });
+  });
+
+  it("releases P2 without disturbing an identical active P1 input", () => {
+    const emulator = new FakeNativeEmulator();
+
+    emulator.press(0, "left");
+    emulator.press(0, "left");
+    emulator.press(1, "left");
+    emulator.releasePlayer(1);
+
+    expect(emulator.getSnapshot().activeInputs).toEqual([
+      { input: "left", player: 0 }
+    ]);
+    expect(emulator.inputCalls).toEqual([
+      { input: "left", player: 0, type: "press" },
+      { input: "left", player: 1, type: "press" },
+      { input: "left", player: 1, type: "release" }
+    ]);
+
+    emulator.release(0, "left");
+
+    expect(emulator.inputCalls.at(-1)).toEqual({
+      input: "left",
+      player: 0,
+      type: "release"
+    });
+    expect(emulator.getSnapshot().activeInputs).toEqual([]);
   });
 
   it("tries the direct Ponpoko adapter with the complete ROM ArrayBuffer before falling back", async () => {
@@ -81,7 +110,7 @@ describe("NativeEmulator contract", () => {
 class RecordingRuntime implements NativeRuntimeAdapter {
   readonly calls: string[] = [];
   readonly loads: Array<{ gameId: string; rom: Blob | ArrayBuffer }> = [];
-  private readonly activeInputs = new Set<EmulatorInput>();
+  private readonly playerInputs = new PlayerInputAdapter();
   private gameId: string | undefined;
   private state: NativeEmulatorState = "idle";
 
@@ -132,25 +161,30 @@ class RecordingRuntime implements NativeRuntimeAdapter {
     return false;
   }
 
-  press(input: EmulatorInput): void {
-    this.calls.push(`press:${input}`);
-    this.activeInputs.add(input);
+  press(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.calls.push(`press:${player}:${input}`);
+    this.playerInputs.press(player, input);
   }
 
-  release(input: EmulatorInput): void {
-    this.calls.push(`release:${input}`);
-    this.activeInputs.delete(input);
+  release(player: EmulatorPlayer, input: EmulatorInput): void {
+    this.calls.push(`release:${player}:${input}`);
+    this.playerInputs.release(player, input);
+  }
+
+  releasePlayer(player: EmulatorPlayer): void {
+    this.calls.push(`releasePlayer:${player}`);
+    this.playerInputs.releasePlayer(player);
   }
 
   dispose(): void {
     this.calls.push("dispose");
-    this.activeInputs.clear();
+    this.playerInputs.releaseAll();
     this.state = "disposed";
   }
 
   getSnapshot(): NativeEmulatorSnapshot {
     return {
-      activeInputs: [...this.activeInputs],
+      activeInputs: this.playerInputs.getActiveInputs(),
       gameId: this.gameId,
       runtimeName: this.runtimeName,
       state: this.state,
@@ -160,6 +194,10 @@ class RecordingRuntime implements NativeRuntimeAdapter {
 
   getBootProgressRuntime(): undefined {
     return undefined;
+  }
+
+  getStreamCaptureAdapter(): null {
+    return null;
   }
 
   hasLoaderScript(): boolean {

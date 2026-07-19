@@ -38,8 +38,8 @@ describe("InputRouter", () => {
 
     expect(emulator.inputCalls).toEqual(
       bindings.flatMap(([, , input]) => [
-        { input, type: "press" },
-        { input, type: "release" }
+        { input, player: 0, type: "press" },
+        { input, player: 0, type: "release" }
       ])
     );
   });
@@ -56,10 +56,10 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyO", "o"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "left", type: "press" },
-      { input: "left", type: "release" },
-      { input: "right", type: "press" },
-      { input: "right", type: "release" }
+      { input: "left", player: 0, type: "press" },
+      { input: "left", player: 0, type: "release" },
+      { input: "right", player: 0, type: "press" },
+      { input: "right", player: 0, type: "release" }
     ]);
     vi.useRealTimers();
   });
@@ -75,8 +75,8 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyZ", "z"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "action1", type: "press" },
-      { input: "action1", type: "release" }
+      { input: "action1", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "release" }
     ]);
   });
 
@@ -92,10 +92,10 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyQ", "q"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "action1", type: "press" },
-      { input: "action1", type: "release" },
-      { input: "action1", type: "press" },
-      { input: "action1", type: "release" }
+      { input: "action1", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "release" },
+      { input: "action1", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "release" }
     ]);
   });
 
@@ -112,10 +112,10 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "ArrowLeft", "ArrowLeft"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "left", type: "press" },
-      { input: "action1", type: "press" },
-      { input: "action1", type: "release" },
-      { input: "left", type: "release" }
+      { input: "left", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "release" },
+      { input: "left", player: 0, type: "release" }
     ]);
   });
 
@@ -132,10 +132,10 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyW", "w"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "action3", type: "press" },
-      { input: "action3", type: "release" },
-      { input: "action3", type: "press" },
-      { input: "action3", type: "release" }
+      { input: "action3", player: 0, type: "press" },
+      { input: "action3", player: 0, type: "release" },
+      { input: "action3", player: 0, type: "press" },
+      { input: "action3", player: 0, type: "release" }
     ]);
   });
 
@@ -156,8 +156,8 @@ describe("InputRouter", () => {
     expect(nativeKeydown).not.toHaveBeenCalled();
     expect(nativeKeyup).not.toHaveBeenCalled();
     expect(emulator.inputCalls).toEqual([
-      { input: "action3", type: "press" },
-      { input: "action3", type: "release" }
+      { input: "action3", player: 0, type: "press" },
+      { input: "action3", player: 0, type: "release" }
     ]);
   });
 
@@ -180,14 +180,14 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keyup", "KeyE", "e"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "action3", type: "press" },
-      { input: "action3", type: "release" },
-      { input: "action2", type: "press" },
-      { input: "action2", type: "release" },
-      { input: "action2", type: "press" },
-      { input: "action2", type: "release" },
-      { input: "action3", type: "press" },
-      { input: "action3", type: "release" }
+      { input: "action3", player: 0, type: "press" },
+      { input: "action3", player: 0, type: "release" },
+      { input: "action2", player: 0, type: "press" },
+      { input: "action2", player: 0, type: "release" },
+      { input: "action2", player: 0, type: "press" },
+      { input: "action2", player: 0, type: "release" },
+      { input: "action3", player: 0, type: "press" },
+      { input: "action3", player: 0, type: "release" }
     ]);
   });
 
@@ -224,12 +224,12 @@ describe("InputRouter", () => {
     target.dispatchEvent(keyboardEvent("keydown", "KeyZ", "z"));
 
     expect(emulator.inputCalls).toEqual([
-      { input: "left", type: "press" },
-      { input: "action1", type: "press" },
-      { input: "left", type: "release" },
-      { input: "action1", type: "release" },
-      { input: "right", type: "press" },
-      { input: "right", type: "release" }
+      { input: "left", player: 0, type: "press" },
+      { input: "action1", player: 0, type: "press" },
+      { input: "left", player: 0, type: "release" },
+      { input: "action1", player: 0, type: "release" },
+      { input: "right", player: 0, type: "press" },
+      { input: "right", player: 0, type: "release" }
     ]);
     expect(emulator.getSnapshot().activeInputs).toEqual([]);
   });
